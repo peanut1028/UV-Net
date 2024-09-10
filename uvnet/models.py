@@ -182,6 +182,144 @@ class Classification(pl.LightningModule):
 
 
 ###############################################################################
+# Regression model
+###############################################################################
+
+
+class UVNetRegressor(nn.Module):
+    """
+    UV-Net solid regression model
+    """
+
+    def __init__(
+        self,
+        num_classes,
+        crv_emb_dim=64,
+        srf_emb_dim=64,
+        graph_emb_dim=128,
+        dropout=0.3,
+    ):
+        """
+        Initialize the UV-Net solid regression model
+
+        Args:
+            num_classes (int): Number of output dimensions
+            crv_in_channels (int, optional): Number of input channels for the 1D edge UV-grids
+            crv_emb_dim (int, optional): Embedding dimension for the 1D edge UV-grids. Defaults to 64.
+            srf_emb_dim (int, optional): Embedding dimension for the 2D face UV-grids. Defaults to 64.
+            graph_emb_dim (int, optional): Embedding dimension for the graph. Defaults to 128.
+            dropout (float, optional): Dropout for the final non-linear classifier. Defaults to 0.3.
+        """
+        super().__init__()
+        # A 1D convolutional network to encode B-rep edge geometry represented as 1D UV-grids
+        self.curv_encoder = uvnet.encoders.UVNetCurveEncoder(
+            in_channels=6, output_dims=crv_emb_dim
+        )
+        # A 2D convolutional network to encode B-rep face geometry represented as 2D UV-grids
+        self.surf_encoder = uvnet.encoders.UVNetSurfaceEncoder(
+            in_channels=7, output_dims=srf_emb_dim
+        )
+        # A graph neural network that message passes face and edge features
+        self.graph_encoder = uvnet.encoders.UVNetGraphEncoder(
+            srf_emb_dim, crv_emb_dim, graph_emb_dim,
+        )
+        # A non-linear classifier that maps global graph embeddings to output dimensions
+        self.reg = _NonLinearClassifier(graph_emb_dim, num_classes, dropout=dropout)
+
+    def forward(self, batched_graph):
+        """
+        Forward pass
+
+        Args:
+            batched_graph (dgl.Graph): A batched DGL graph containing the face 2D UV-grids in node features
+                                       (ndata['x']) and 1D edge UV-grids in the edge features (edata['x']).
+
+        Returns:
+            torch.tensor: Output (batch_size x num_classes)
+        """
+        # Input features
+        input_crv_feat = batched_graph.edata["x"]
+        input_srf_feat = batched_graph.ndata["x"]
+        # Compute hidden edge and face features
+        hidden_crv_feat = self.curv_encoder(input_crv_feat)
+        hidden_srf_feat = self.surf_encoder(input_srf_feat)
+        # Message pass and compute per-face(node) and global embeddings
+        _, graph_emb = self.graph_encoder(
+            batched_graph, hidden_srf_feat, hidden_crv_feat
+        )
+        # Map to output
+        out = self.reg(graph_emb)
+        return out
+
+
+class Regression(pl.LightningModule):
+    """
+    PyTorch Lightning module to train/test the regressor.
+    """
+
+    def __init__(self, num_classes):
+        """
+        Args:
+            num_classes (int): Number of output dimensions
+        """
+        super().__init__()
+        self.save_hyperparameters()
+        self.model = UVNetRegressor(num_classes)
+        self.train_mae = torchmetrics.MeanAbsoluteError()
+        self.val_mae = torchmetrics.MeanAbsoluteError()
+        self.test_mae = torchmetrics.MeanAbsoluteError()
+
+    def forward(self, batched_graph):
+        logits = self.model(batched_graph)
+        return logits
+
+    def training_step(self, batch, batch_idx):
+        inputs = batch["graph"].to(self.device)
+        inputs.ndata["x"] = inputs.ndata["x"].permute(0, 3, 1, 2)
+        inputs.edata["x"] = inputs.edata["x"].permute(0, 2, 1)
+        labels = batch["label"].to(self.device)
+        vars = batch["vars"].to(self.device)
+        logits = self.model(inputs)
+        loss = F.mse_loss(logits, labels, reduction="mean")
+        self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
+        preds = logits
+        self.log("train_mae", self.train_mae(preds, labels), on_step=False, on_epoch=True, sync_dist=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        inputs = batch["graph"].to(self.device)
+        inputs.ndata["x"] = inputs.ndata["x"].permute(0, 3, 1, 2)
+        inputs.edata["x"] = inputs.edata["x"].permute(0, 2, 1)
+        labels = batch["label"].to(self.device)
+        vars = batch["vars"].to(self.device)
+        logits = self.model(inputs)
+        loss = F.mse_loss(logits, labels, reduction="mean")
+        self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
+        preds = logits
+        self.log("val_mae", self.val_mae(preds, labels), on_step=False, on_epoch=True, sync_dist=True)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        inputs = batch["graph"].to(self.device)
+        inputs.ndata["x"] = inputs.ndata["x"].permute(0, 3, 1, 2)
+        inputs.edata["x"] = inputs.edata["x"].permute(0, 2, 1)
+        labels = batch["label"].to(self.device)
+        vars = batch["vars"].to(self.device)
+        logits = self.model(inputs)
+        loss = F.mse_loss(logits, labels, reduction="mean")
+        self.log("test_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
+        preds = logits
+        self.log("test_mae", self.test_mae(preds, labels), on_step=False, on_epoch=True, sync_dist=True)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters())
+        return optimizer
+
+
+
+
+
+###############################################################################
 # Segmentation model
 ###############################################################################
 
