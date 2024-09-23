@@ -224,15 +224,16 @@ class UVNetRegressor(nn.Module):
             srf_emb_dim, crv_emb_dim, graph_emb_dim,
         )
         # A non-linear classifier that maps global graph embeddings to output dimensions
-        self.reg = _NonLinearClassifier(graph_emb_dim, num_classes, dropout=dropout)
+        self.reg = _NonLinearClassifier(graph_emb_dim+7, num_classes, dropout=dropout)
 
-    def forward(self, batched_graph):
+    def forward(self, batched_graph, vars=None):
         """
         Forward pass
 
         Args:
             batched_graph (dgl.Graph): A batched DGL graph containing the face 2D UV-grids in node features
                                        (ndata['x']) and 1D edge UV-grids in the edge features (edata['x']).
+            vars: Optional variables with shape (batchsize x num_vars)
 
         Returns:
             torch.tensor: Output (batch_size x num_classes)
@@ -248,7 +249,8 @@ class UVNetRegressor(nn.Module):
             batched_graph, hidden_srf_feat, hidden_crv_feat
         )
         # Map to output
-        out = self.reg(graph_emb)
+        out = self.reg(torch.cat([graph_emb, vars], dim=1))
+        # out = self.reg(graph_emb)
         return out
 
 
@@ -269,50 +271,67 @@ class Regression(pl.LightningModule):
         self.val_mae = torchmetrics.MeanAbsoluteError()
         self.test_mae = torchmetrics.MeanAbsoluteError()
 
-    def forward(self, batched_graph):
-        logits = self.model(batched_graph)
-        return logits
-
-    def training_step(self, batch, batch_idx):
+    def forward(self, batch):
         inputs = batch["graph"].to(self.device)
         inputs.ndata["x"] = inputs.ndata["x"].permute(0, 3, 1, 2)
         inputs.edata["x"] = inputs.edata["x"].permute(0, 2, 1)
         labels = batch["label"].to(self.device)
-        vars = batch["vars"].to(self.device)
-        logits = self.model(inputs)
+        vars = batch["vars"].to(self.device) 
+        logits = self.model(inputs, vars)
+        logits = torch.squeeze(logits)
         loss = F.mse_loss(logits, labels, reduction="mean")
-        self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
         preds = logits
-        self.log("train_mae", self.train_mae(preds, labels), on_step=False, on_epoch=True, sync_dist=True)
-        return loss
+        acc = 1 - torch.mean(torch.abs(preds - labels) / labels)
+        return {"loss": loss, "acc": acc}
+    
+    def training_step(self, batch, batch_idx):
+        return self.forward(batch)
 
     def validation_step(self, batch, batch_idx):
-        inputs = batch["graph"].to(self.device)
-        inputs.ndata["x"] = inputs.ndata["x"].permute(0, 3, 1, 2)
-        inputs.edata["x"] = inputs.edata["x"].permute(0, 2, 1)
-        labels = batch["label"].to(self.device)
-        vars = batch["vars"].to(self.device)
-        logits = self.model(inputs)
-        loss = F.mse_loss(logits, labels, reduction="mean")
-        self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
-        preds = logits
-        self.log("val_mae", self.val_mae(preds, labels), on_step=False, on_epoch=True, sync_dist=True)
-        return loss
+        return self.forward(batch)
 
     def test_step(self, batch, batch_idx):
         inputs = batch["graph"].to(self.device)
         inputs.ndata["x"] = inputs.ndata["x"].permute(0, 3, 1, 2)
         inputs.edata["x"] = inputs.edata["x"].permute(0, 2, 1)
         labels = batch["label"].to(self.device)
-        vars = batch["vars"].to(self.device)
+        # vars = batch["vars"].to(self.device)
+        # vars = vars.unsqueeze(1)
         logits = self.model(inputs)
-        loss = F.mse_loss(logits, labels, reduction="mean")
-        self.log("test_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
+        logits = torch.squeeze(logits)
         preds = logits
-        self.log("test_mae", self.test_mae(preds, labels), on_step=False, on_epoch=True, sync_dist=True)
+        test_acc = 1 - torch.mean(torch.abs(preds - labels) / labels)
+        return {"acc": test_acc, "error": preds - labels}
+
+    def training_epoch_end(self, outputs):
+        '''
+        This function is called at the end of each epoch to log the training loss and accuracy.
+
+        Args:
+            outputs (list[dict]): A list of dictionaries, where each dictionary corresponds to the output of a training_step.
+        '''
+        train_loss = torch.stack([x['loss'] for x in outputs]).mean()
+        train_acc = torch.stack([x['acc'] for x in outputs]).mean()
+        self.log("train_loss", train_loss, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("train_acc", train_acc, on_step=False, on_epoch=True, sync_dist=True)    
+
+    def validation_epoch_end(self, outputs):
+        val_loss = torch.stack([x['loss'] for x in outputs]).mean()
+        val_acc = torch.stack([x['acc'] for x in outputs]).mean()
+        self.log("val_loss", val_loss, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("val_acc", val_acc, on_step=False, on_epoch=True, sync_dist=True)
+
+    def test_epoch_end(self, outputs):
+        test_acc = torch.stack([x['acc'] for x in outputs]).mean()
+        test_errors = torch.cat([x['error'] for x in outputs])
+        self.log("test_acc", test_acc, on_step=False, on_epoch=True, sync_dist=True)
+        print(test_errors)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters())
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.01)
+        # scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, 1, 0.001)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
+        # return [optimizer], [scheduler]
         return optimizer
 
 

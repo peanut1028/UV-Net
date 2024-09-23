@@ -63,12 +63,12 @@ class BaseDataset(Dataset):
         batched_filenames = [sample["filename"] for sample in batch]
         return {"graph": batched_graph, "filename": batched_filenames}
 
-    def get_dataloader(self, batch_size=128, shuffle=True, num_workers=0):
+    def get_dataloader(self, batch_size=128, shuffle=True, num_workers=0, drop_last=True):
         return DataLoader(
             self,
             batch_size=batch_size,
             shuffle=shuffle,
             collate_fn=self._collate,
             num_workers=num_workers,  # Can be set to non-zero on Linux
-            drop_last=True,
+            drop_last=drop_last,
         )

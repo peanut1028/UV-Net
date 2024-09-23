@@ -25,13 +25,13 @@ def build_graph(solid, curv_num_u_samples, surf_num_u_samples, surf_num_v_sample
         # Compute UV-grids
         points = uvgrid(
             face, method="point", num_u=surf_num_u_samples, num_v=surf_num_v_samples
-        )
+        )   # points: (num_u, num_v, 3) 网格顶点的3d坐标
         normals = uvgrid(
             face, method="normal", num_u=surf_num_u_samples, num_v=surf_num_v_samples
-        )
+        )   # normals: (num_u, num_v, 3) 每个网格顶点的法向量
         visibility_status = uvgrid(
             face, method="visibility_status", num_u=surf_num_u_samples, num_v=surf_num_v_samples
-        )
+        )   # visibility_status: (num_u, num_v) 0: Inside, 1: Outside, 2: On boundary
         mask = np.logical_or(visibility_status == 0, visibility_status == 2)  # 0: Inside, 1: Outside, 2: On boundary
         # Concatenate channel-wise to form face feature tensor
         face_feat = np.concatenate((points, normals, mask), axis=-1)
@@ -101,8 +101,12 @@ def main():
     parser = argparse.ArgumentParser(
         "Convert solid models to face-adjacency graphs with UV-grid features"
     )
-    parser.add_argument("input", type=str, help="Input folder of STEP files")
-    parser.add_argument("output", type=str, help="Output folder of DGL graph BIN files")
+    parser.add_argument("--input", type=str, 
+                        default=r"C:\Users\Administrator\Desktop\test_step",
+                        help="Input folder of STEP files")
+    parser.add_argument("--output", type=str, 
+                        default=r"C:\Users\Administrator\Desktop\test_step",
+                        help="Output folder of DGL graph BIN files")
     parser.add_argument(
         "--curv_u_samples", type=int, default=10, help="Number of samples on each curve"
     )
@@ -121,7 +125,7 @@ def main():
     parser.add_argument(
         "--num_processes",
         type=int,
-        default=8,
+        default=1,
         help="Number of processes to use",
     )
     args = parser.parse_args()

@@ -39,7 +39,8 @@ class ATWCADDataset(BaseDataset):
             random_rotate (bool, optional): Whether to apply random rotations to the solid in 90 degree increments. Defaults to False.
         """
         assert mode in ("train", "val", "test")
-        path = pathlib.Path(root_dir)
+        self.mode = mode
+        self.root_dir = root_dir
 
         self.random_rotate = random_rotate
 
@@ -47,47 +48,26 @@ class ATWCADDataset(BaseDataset):
         self.vars = []
         self.labels = []
 
-        if mode == "train":
-            with open(osp.join(root_dir, "train.txt"), "r") as f:
-                for line in f.readlines():
-                    line = line.strip()
-                    if line == '':
-                        continue
-                    filename, annostr = line.rsplit('  ', 1)
-                    values = [float(x) for x in annostr.split(' ')]
-                    assert len(values) == 5, "{} has wrong number of values".format(filename)
-                    self.file_paths.append(filename)
-                    self.vars.append(values[:4])
-                    self.labels.append(values[4])
-        elif mode == "val":
-            with open(osp.join(root_dir, "val.txt"), "r") as f:
-                for line in f.readlines():
-                    line = line.strip()
-                    if line == '':
-                        continue
-                    filename, annostr = line.rsplit('  ', 1)
-                    values = [float(x) for x in annostr.split(' ')]
-                    assert len(values) == 5, "{} has wrong number of values".format(filename)
-                    self.file_paths.append(filename)
-                    self.vars.append(values[:4])
-                    self.labels.append(values[4])
-        elif mode == "test":
-            with open(osp.join(root_dir, "test.txt"), "r") as f:
-                for line in f.readlines():
-                    line = line.strip()
-                    if line == '':
-                        continue
-                    filename, annostr = line.rsplit('  ', 1)
-                    values = [float(x) for x in annostr.split(' ')]
-                    assert len(values) == 5, "{} has wrong number of values".format(filename)
-                    self.file_paths.append(filename)
-                    self.vars.append(values[:4])
-                    self.labels.append(values[4])
-
+        self.load_data_from_txt()
 
         print(f"Loading {mode} data...")
         self.load_graphs(center_and_scale)
         print("Done loading {} files".format(len(self.data)))
+
+    def load_data_from_txt(self):
+        path = pathlib.Path(self.root_dir)
+        with open(osp.join(self.root_dir, self.mode + ".txt"), "r") as f:
+            for line in f.readlines():
+                line = line.strip()
+                if line == '':
+                    continue
+                filename, annostr = line.rsplit('  ', 1)
+                values = [float(x) for x in annostr.split(' ')]
+                assert len(values) == 8, "{} has wrong number of values".format(filename)
+                filename += '.bin'
+                self.file_paths.append(path / 'bin' / filename)
+                self.vars.append(values[:-1])  
+                self.labels.append(values[-1])
 
     def load_graphs(self, center_and_scale=True):
         self.data = []
@@ -116,6 +96,8 @@ class ATWCADDataset(BaseDataset):
 
     def _collate(self, batch):
         collated = super()._collate(batch)
-        collated["label"] =  torch.cat([x["label"] for x in batch], dim=0)
-        collated["vars"] =  torch.cat([x["vars"] for x in batch], dim=0)
+        collated["label"] =  torch.Tensor([x["label"] for x in batch])
+        collated["vars"] =  torch.cat([x["vars"].unsqueeze(0) for x in batch], dim=0)
         return collated
+
+
