@@ -15,11 +15,14 @@
 import argparse
 import pathlib
 import time
-
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.utilities.seed import seed_everything
+import torch
 
 from datasets.atwcad import ATWCADDataset
 from uvnet.models import Regression
@@ -28,7 +31,7 @@ from uvnet.models import Regression
 # Define the arguments for the script
 accelerator = "gpu"             # "cpu" or "gpu" or "tpu"
 devices = 1                     # number of devices to use for training (only for GPU/TPU)
-max_epochs = 400                # maximum number of epochs to train (only for training)
+max_epochs = 500                # maximum number of epochs to train (only for training)
 check_val_every_n_epoch = 5     # check validation every n epochs (only for training)
 accumulate_grad_batches = 2     # number of batches to accumulate before performing an optimization step (only for training)
 amp_backend = "native"          # mixed precision backend to use. Options: 'native', 'apex'
@@ -41,7 +44,7 @@ parser = argparse.ArgumentParser("UV-Net solid model regression")
 parser.add_argument(
     "--mode", 
     choices=("train", "test"), 
-    default="train",
+    default="test",
     help="Whether to train or test"
 )
 parser.add_argument("--dataset", 
@@ -61,7 +64,7 @@ parser.add_argument(
 parser.add_argument(
     "--checkpoint",
     type=str,
-    default=r"E:\LGJ\program\UV-Net\results\regression\0912\151419\best.ckpt",
+    default=r"E:\LGJ\program\UV-Net\results\regression\1008\142458\epoch=344-val_loss=97.76-val_acc=0.80.ckpt",
     help="Checkpoint file to load weights from for testing",
 )
 parser.add_argument(
@@ -85,9 +88,10 @@ if not results_path.exists():
 month_day = time.strftime("%m%d")
 hour_min_second = time.strftime("%H%M%S")
 checkpoint_callback = ModelCheckpoint(
-    monitor="val_loss",
+    monitor="val_acc",
+    save_top_k=-1,
     dirpath=str(results_path.joinpath(month_day, hour_min_second)),
-    filename="best",
+    filename='{epoch}-{val_loss:.2f}-{val_acc:.2f}',
     save_last=True,
 )
 
@@ -151,7 +155,15 @@ else:
         batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, drop_last=False
     )
     model = Regression.load_from_checkpoint(args.checkpoint)
-    results = trainer.test(model=model, dataloaders=[test_loader], verbose=True)
+    results = trainer.predict(model=model, dataloaders=[test_loader])
+    preds = torch.cat([x["preds"] for x in results])
+    labels = torch.cat([x["labels"] for x in results])
+    acc = 1 - (torch.abs(preds - labels) / labels).mean()
     print(
-        f"Regression accuracy on test set: {results[0]['test_acc']:.4f}"
+        f"Regression accuracy on test set: {acc:.4f}"
     )
+    # write predictions to file
+    df = pd.DataFrame(
+        {"predicted_price": preds.numpy(), "actual_price": labels.numpy()}
+    )
+    df.to_csv(results_path.joinpath(f"test_results_{month_day}_{hour_min_second}_{acc:.4f}.csv"), index=False)

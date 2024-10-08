@@ -24,7 +24,7 @@ class ATWCADDataset(BaseDataset):
         ATWCAD
         |
         ├── train.txt
-            ├── file1.bin  主材重量 主材单价 主材系数 主材费用 单价(gt)
+            ├── file1.bin  0物料名称embeding 1主材重量 2主材单价 3主材系数 4主材费用 5表面处理重 6表面处理面积 7加工价(gt)
             ├── ...
         ├── test.txt
         ├── step/

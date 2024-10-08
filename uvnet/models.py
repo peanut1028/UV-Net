@@ -290,18 +290,15 @@ class Regression(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         return self.forward(batch)
 
-    def test_step(self, batch, batch_idx):
+    def predict_step(self, batch, batch_idx):
         inputs = batch["graph"].to(self.device)
         inputs.ndata["x"] = inputs.ndata["x"].permute(0, 3, 1, 2)
         inputs.edata["x"] = inputs.edata["x"].permute(0, 2, 1)
         labels = batch["label"].to(self.device)
-        # vars = batch["vars"].to(self.device)
-        # vars = vars.unsqueeze(1)
-        logits = self.model(inputs)
+        vars = batch["vars"].to(self.device)
+        logits = self.model(inputs, vars)
         logits = torch.squeeze(logits)
-        preds = logits
-        test_acc = 1 - torch.mean(torch.abs(preds - labels) / labels)
-        return {"acc": test_acc, "error": preds - labels}
+        return {"labels": labels, "preds": logits}
 
     def training_epoch_end(self, outputs):
         '''
@@ -320,12 +317,6 @@ class Regression(pl.LightningModule):
         val_acc = torch.stack([x['acc'] for x in outputs]).mean()
         self.log("val_loss", val_loss, on_step=False, on_epoch=True, sync_dist=True)
         self.log("val_acc", val_acc, on_step=False, on_epoch=True, sync_dist=True)
-
-    def test_epoch_end(self, outputs):
-        test_acc = torch.stack([x['acc'] for x in outputs]).mean()
-        test_errors = torch.cat([x['error'] for x in outputs])
-        self.log("test_acc", test_acc, on_step=False, on_epoch=True, sync_dist=True)
-        print(test_errors)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=0.01)
