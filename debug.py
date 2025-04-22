@@ -11,110 +11,9 @@ step读取测试
 # graph = face_adjacency(solid)  # graph只有面和边的关系信息，没有属性信息
 # print(graph)
 
-"""
-get the number of holes in a step file
-(because the step file always split a complete hole into several curved faces, 
-so the number this function returns may not be accurate)
-"""
-# ************************pythonocc**************************
-from OCC.Core.STEPControl import STEPControl_Reader
-from OCC.Core.TopoDS import topods_Face, topods_Edge
-from OCC.Core.TopExp import TopExp_Explorer
-from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_FORWARD, TopAbs_REVERSED
-from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
-from OCC.Core.GeomAbs import GeomAbs_Cylinder
-from OCC.Core.BRep import BRep_Tool
-from OCC.Core.GProp import GProp_GProps
-from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
-
-# Step 1: Load the STEP file
-def load_step_file(file_path):
-    step_reader = STEPControl_Reader()
-    status = step_reader.ReadFile(file_path)
-    if status == 1:  # STEP file successfully loaded
-        step_reader.TransferRoots()
-        shape = step_reader.OneShape()
-        return shape
-    else:
-        raise Exception("Error: Could not load STEP file.")
-
-# Step 2: Check if the face is an internal cylindrical hole
-def is_hole(face):
-    # Get the surface geometry of the face
-    surface = BRepAdaptor_Surface(face)
-    
-    # Check if it's a cylindrical surface
-    if surface.GetType() == GeomAbs_Cylinder:
-        # Get the cylinder radius and orientation
-        cylinder = surface.Cylinder()
-        radius = cylinder.Radius()
-
-        # Exclude large radii (for example, set a threshold based on part size)
-        if radius > 10:  # Assuming holes are usually smaller, adjust threshold if needed
-            return False
-        
-        # Check the face orientation to distinguish between holes and external surfaces
-        if face.Orientation() == TopAbs_REVERSED:
-            return True  # Holes are usually reversed in orientation (facing inward)
-    
-    return False
-
-# Step 3: Traverse the faces and detect cylindrical holes
-def count_holes(shape):
-    explorer = TopExp_Explorer(shape, TopAbs_FACE)
-    hole_count = 0
-
-    while explorer.More():
-        face = topods_Face(explorer.Current())
-        if is_hole(face):
-            hole_count += 1
-        explorer.Next()
-
-    return hole_count
-
-# Step 2: Check if a face represents a bend (cylindrical surface with a small radius)
-def is_bend_face(face, radius_threshold=10.0):
-    # Get the surface geometry of the face
-    surface = BRepAdaptor_Surface(face)
-    
-    if surface.GetType() == GeomAbs_Cylinder:
-        # Get the cylinder radius
-        cylinder = surface.Cylinder()
-        radius = cylinder.Radius()
-        
-        # Use a radius threshold to identify small-radius bends (adjust threshold as needed)
-        if radius < radius_threshold:
-            return True
-    return False
-
-# Step 3: Count the number of bends in the shape
-def count_bends(shape, radius_threshold=10.0):
-    explorer = TopExp_Explorer(shape, TopAbs_FACE)
-    bend_count = 0
-
-    while explorer.More():
-        face = topods_Face(explorer.Current())
-        
-        if is_bend_face(face, radius_threshold):
-            bend_count += 1
-        
-        explorer.Next()
-
-    return bend_count
-
-
-# Main function
-if __name__ == "__main__":
-    file_path = r"C:\Users\Administrator\Desktop\test_step\圆环.stp"
-    shape = load_step_file(file_path)
-    holes = count_holes(shape)
-    bends = count_bends(shape)
-    print(f"Number of holes: {holes}, Number of bends: {bends}")
-
-
 
 """
-get the three-view drawing from a step file
+get the three-view drawing from a step file(not accurate)
 """
 # from OCC.Core.STEPControl import STEPControl_Reader
 # from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Section
@@ -193,19 +92,27 @@ get the three-view drawing from a step file
 """
 将测试集结果匹配到文件名,保存csv
 """
-# import pandas
+import pandas
 
-# # csv_path = r"E:\LGJ\program\UV-Net\results\regression\test_results_0924_143716_0.7874.csv" # v1
-# # txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v1\test.txt"
-# csv_path = r"E:\LGJ\program\UV-Net\results\regression\test_results_1008_152433_0.7975.csv" 
-# txt_path = r"E:\Project\AutoPricing\datasets\atwcad\test.txt"
-# with open(txt_path, "r") as f:
-#     lines = f.readlines()
-# codes = [l.strip().split("  ")[0] for l in lines]
+# csv_path = r"E:\LGJ\program\UV-Net\results\regression\test_results_0924_143716_0.7874.csv" # v1
+# txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v1\test.txt"
+csv_path = r"E:\LGJ\program\UV-Net\results\regression\test_results_1108_162611_0.7926.csv" 
+txt_path = r"E:\Project\AutoPricing\datasets\atwcad\test.txt"
+with open(txt_path, "r") as f:
+    lines = f.readlines()
+codes = []
+nameCodes = []
+for l in lines:
+    code, annostr = l.strip().rsplit("  ", 1)
+    values = [float(x) for x in annostr.split(' ')]
+    nameCode = values[0]
+    codes.append(code)
+    nameCodes.append(nameCode)
 
-# df = pandas.read_csv(csv_path)
-# df["code"] = codes
-# df.to_csv(csv_path, index=False)
+df = pandas.read_csv(csv_path)
+df["code"] = codes
+df["nameCode"] = nameCodes
+df.to_csv(csv_path, index=False)
 
 
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 '''
-@File    :   pricing.py
+@File    :   material.py
 @Time    :   2024/09/06 17:31:34
 @Author  :   LGJ 
 @Version :   1.0
 @Contact :   lgjhsjt@163.com
 @License :   (C)Copyright 2022-2025
-@Desc    :   None
+@Desc    :   Train/validate model to predict raw material weight of a step sheet metal part 
 '''
 
 # here put the import lib
@@ -25,13 +25,14 @@ from pytorch_lightning.utilities.seed import seed_everything
 import torch
 
 from datasets.atwcad import ATWCADDataset
+from datasets.atwmat import ATWMATDataset
 from uvnet.models import Regression
 
 
 # Define the arguments for the script
 accelerator = "gpu"             # "cpu" or "gpu" or "tpu"
 devices = [0]                     # number of devices to use for training (only for GPU/TPU)
-max_epochs = 1000                # maximum number of epochs to train (only for training)
+max_epochs = 500                # maximum number of epochs to train (only for training)
 check_val_every_n_epoch = 5     # check validation every n epochs (only for training)
 accumulate_grad_batches = 2     # number of batches to accumulate before performing an optimization step (only for training)
 amp_backend = "native"          # mixed precision backend to use. Options: 'native', 'apex'
@@ -40,8 +41,8 @@ auto_scale_batch_size = "power"    # whether to perform automatic scaling of the
 use_swa = True                  # whether to use stochastic weight averaging (only for training)
 use_CyclicLR = True             # whether to use cyclical learning rate (only for training)
 
-datasetDir = r"E:\Project\AutoPricing\datasets\atwcad"
-checkpointPath = r"E:\LGJ\program\UV-Net\results\regression\0115\134025\epoch=564-val_loss=3.20-val_acc=0.84.ckpt"
+datasetDir = r"E:\Project\AutoPricing\datasets\atwmaterial"
+checkpointPath = r"E:\LGJ\program\UV-Net\results\regression\0115\120043\epoch=884-val_loss=34.56-val_acc=0.72.ckpt"
 
 parser = argparse.ArgumentParser("UV-Net solid model regression")
 parser.add_argument(
@@ -51,8 +52,8 @@ parser.add_argument(
     help="Whether to train or test"
 )
 parser.add_argument("--dataset", 
-                    choices=("atwcad",),
-                    default="atwcad", 
+                    choices=("atwcad","atwmaterial"),
+                    default="atwmaterial", 
                     help="Dataset to train on")
 parser.add_argument("--dataset_path", type=str, 
                     default=datasetDir,
@@ -112,11 +113,13 @@ trainer = Trainer.from_argparse_args(
     amp_backend=amp_backend,
     auto_lr_find=auto_lr_find,
     auto_scale_batch_size=auto_scale_batch_size,  
-    log_every_n_steps=23,  
+    log_every_n_steps=30,  
 )
 
 if args.dataset == "atwcad":
     Dataset = ATWCADDataset
+elif args.dataset == "atwmaterial":
+    Dataset = ATWMATDataset
 else:
     raise ValueError("Unsupported dataset")
 
@@ -139,7 +142,7 @@ results/{args.experiment_name}/{month_day}/{hour_min_second}/best.ckpt
     """
     )
     model = Regression(num_classes=1,
-                       vars_dim=8)
+                       vars_dim=7)
     train_data = Dataset(root_dir=args.dataset_path, mode="train")
     val_data = Dataset(root_dir=args.dataset_path, mode="val")
     train_loader = train_data.get_dataloader(
@@ -175,6 +178,6 @@ else:
         codes.append(code)
 
     df = pd.DataFrame(
-        {"code": codes, "predicted": preds.numpy(), "actual": labels.numpy()}
+        {"code": codes, "predicted_volume": preds.numpy(), "actual_volume": labels.numpy()}
     )
     df.to_csv(results_path.joinpath(f"test_results_{month_day}_{hour_min_second}_{acc:.4f}.csv"), index=False)

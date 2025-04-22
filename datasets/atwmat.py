@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 '''
-@File    :   atwcad.py
-@Time    :   2025/01/14 11:43:04
+@File    :   atwmat.py
+@Time    :   2025/01/14 11:43:41
 @Author  :   LGJ 
 @Version :   1.0
 @Contact :   lgjhsjt@163.com
 @License :   (C)Copyright 2022-2025
-@Desc    :   dataset for machining price prediction
+@Desc    :   Dataset for raw material weight prediction
 '''
 
 # here put the import lib
@@ -23,7 +23,7 @@ from datasets.base import BaseDataset
 
 
 
-class ATWCADDataset(BaseDataset):
+class ATWMATDataset(BaseDataset):
 
     def __init__(
         self,
@@ -33,20 +33,17 @@ class ATWCADDataset(BaseDataset):
         random_rotate=False,
     ):
         """
-        Load the ATWCAD dataset
+        Load the ATWMAT dataset
 
-        ATWCAD
+        ATWMAT
         |
         ├── train.txt
-            ├── file1.bin  0物料名称embeding 1主材重量 2主材单价 3主材系数 4主材费用 
-                            5表面处理重 6表面处理面积 
-                            7板厚 8折弯 9切割 10孔 
-                            11(>10个)加工价(gt)
+            ├── file1.bin  0物料名称embeding 1板厚 
+                            2孔 3折弯 4切割 5净表面积cm2 6净体积cm3
+                            毛体积
             ├── ...
         ├── test.txt
-        ├── step/
-        ├── graph/
-        ├── label/
+        ├── bin/
         ├── ...
 
         Args:
@@ -59,6 +56,7 @@ class ATWCADDataset(BaseDataset):
         self.mode = mode
         self.root_dir = root_dir
         self.data_txt = osp.join(self.root_dir, self.mode + ".txt")
+
         self.random_rotate = random_rotate
 
         self.file_paths = []

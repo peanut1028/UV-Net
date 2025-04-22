@@ -34,7 +34,7 @@ def build_graph(solid, curv_num_u_samples, surf_num_u_samples, surf_num_v_sample
         )   # visibility_status: (num_u, num_v) 0: Inside, 1: Outside, 2: On boundary
         mask = np.logical_or(visibility_status == 0, visibility_status == 2)  # 0: Inside, 1: Outside, 2: On boundary
         # Concatenate channel-wise to form face feature tensor
-        face_feat = np.concatenate((points, normals, mask), axis=-1)
+        face_feat = np.concatenate((points, normals, mask), axis=-1) # (num_u, num_v, 3+3+1)
         graph_face_feat.append(face_feat)
     graph_face_feat = np.asarray(graph_face_feat)
 
@@ -50,7 +50,7 @@ def build_graph(solid, curv_num_u_samples, surf_num_u_samples, surf_num_v_sample
         points = ugrid(edge, method="point", num_u=curv_num_u_samples)
         tangents = ugrid(edge, method="tangent", num_u=curv_num_u_samples)
         # Concatenate channel-wise to form edge feature tensor
-        edge_feat = np.concatenate((points, tangents), axis=-1)
+        edge_feat = np.concatenate((points, tangents), axis=-1) # (num_u, 3+3)
         graph_edge_feat.append(edge_feat)
     graph_edge_feat = np.asarray(graph_edge_feat)
 

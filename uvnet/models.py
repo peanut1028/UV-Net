@@ -25,6 +25,11 @@ class _NonLinearClassifier(nn.Module):
         self.dp2 = nn.Dropout(p=dropout)
         self.linear3 = nn.Linear(256, num_classes)
 
+        # self.linear3 = nn.Linear(256, 128, bias=False)
+        # self.bn3 = nn.BatchNorm1d(128)
+        # self.dp3 = nn.Dropout(p=dropout)
+        # self.linear4 = nn.Linear(128, num_classes)
+
         for m in self.modules():
             self.weights_init(m)
 
@@ -50,6 +55,10 @@ class _NonLinearClassifier(nn.Module):
         x = F.relu(self.bn2(self.linear2(x)))
         x = self.dp2(x)
         x = self.linear3(x)
+
+        # x = F.relu(self.bn3(self.linear3(x)))
+        # x = self.dp3(x)
+        # x = self.linear4(x)
         return x
 
 
@@ -194,6 +203,7 @@ class UVNetRegressor(nn.Module):
     def __init__(
         self,
         num_classes,
+        vars_dim,
         crv_emb_dim=64,
         srf_emb_dim=64,
         graph_emb_dim=128,
@@ -204,6 +214,7 @@ class UVNetRegressor(nn.Module):
 
         Args:
             num_classes (int): Number of output dimensions
+            vals_dim (int): Number of input variables
             crv_in_channels (int, optional): Number of input channels for the 1D edge UV-grids
             crv_emb_dim (int, optional): Embedding dimension for the 1D edge UV-grids. Defaults to 64.
             srf_emb_dim (int, optional): Embedding dimension for the 2D face UV-grids. Defaults to 64.
@@ -224,7 +235,7 @@ class UVNetRegressor(nn.Module):
             srf_emb_dim, crv_emb_dim, graph_emb_dim,
         )
         # A non-linear classifier that maps global graph embeddings to output dimensions
-        self.reg = _NonLinearClassifier(graph_emb_dim+7, num_classes, dropout=dropout)
+        self.reg = _NonLinearClassifier(graph_emb_dim+vars_dim, num_classes, dropout=dropout)
 
     def forward(self, batched_graph, vars=None):
         """
@@ -249,8 +260,10 @@ class UVNetRegressor(nn.Module):
             batched_graph, hidden_srf_feat, hidden_crv_feat
         )
         # Map to output
-        out = self.reg(torch.cat([graph_emb, vars], dim=1))
-        # out = self.reg(graph_emb)
+        if vars is not None:
+            out = self.reg(torch.cat([graph_emb, vars], dim=1))
+        else:
+            out = self.reg(graph_emb)
         return out
 
 
@@ -259,14 +272,14 @@ class Regression(pl.LightningModule):
     PyTorch Lightning module to train/test the regressor.
     """
 
-    def __init__(self, num_classes):
+    def __init__(self, num_classes=1, vars_dim=11):
         """
         Args:
             num_classes (int): Number of output dimensions
         """
         super().__init__()
         self.save_hyperparameters()
-        self.model = UVNetRegressor(num_classes)
+        self.model = UVNetRegressor(num_classes, vars_dim)
         self.train_mae = torchmetrics.MeanAbsoluteError()
         self.val_mae = torchmetrics.MeanAbsoluteError()
         self.test_mae = torchmetrics.MeanAbsoluteError()
@@ -279,7 +292,7 @@ class Regression(pl.LightningModule):
         vars = batch["vars"].to(self.device) 
         logits = self.model(inputs, vars)
         logits = torch.squeeze(logits)
-        loss = F.mse_loss(logits, labels, reduction="mean")
+        loss = F.l1_loss(logits, labels, reduction="mean")
         preds = logits
         acc = 1 - torch.mean(torch.abs(preds - labels) / labels)
         return {"loss": loss, "acc": acc}
