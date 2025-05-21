@@ -94,6 +94,7 @@ class ATWMATDataset(BaseDataset):
                 # Catch the case of graphs with no edges
                 continue
             self.data.append(sample)
+        # 中心化和缩放
         if center_and_scale:
             self.center_and_scale()
         self.convert_to_float32()

@@ -92,27 +92,27 @@ get the three-view drawing from a step file(not accurate)
 """
 将测试集结果匹配到文件名,保存csv
 """
-import pandas
+# import pandas
 
-# csv_path = r"E:\LGJ\program\UV-Net\results\regression\test_results_0924_143716_0.7874.csv" # v1
-# txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v1\test.txt"
-csv_path = r"E:\LGJ\program\UV-Net\results\regression\test_results_1108_162611_0.7926.csv" 
-txt_path = r"E:\Project\AutoPricing\datasets\atwcad\test.txt"
-with open(txt_path, "r") as f:
-    lines = f.readlines()
-codes = []
-nameCodes = []
-for l in lines:
-    code, annostr = l.strip().rsplit("  ", 1)
-    values = [float(x) for x in annostr.split(' ')]
-    nameCode = values[0]
-    codes.append(code)
-    nameCodes.append(nameCode)
+# # csv_path = r"E:\LGJ\program\UV-Net\results\regression\test_results_0924_143716_0.7874.csv" # v1
+# # txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v1\test.txt"
+# csv_path = r"E:\LGJ\program\UV-Net\results\regression\test_results_1108_162611_0.7926.csv" 
+# txt_path = r"E:\Project\AutoPricing\datasets\atwcad\test.txt"
+# with open(txt_path, "r") as f:
+#     lines = f.readlines()
+# codes = []
+# nameCodes = []
+# for l in lines:
+#     code, annostr = l.strip().rsplit("  ", 1)
+#     values = [float(x) for x in annostr.split(' ')]
+#     nameCode = values[0]
+#     codes.append(code)
+#     nameCodes.append(nameCode)
 
-df = pandas.read_csv(csv_path)
-df["code"] = codes
-df["nameCode"] = nameCodes
-df.to_csv(csv_path, index=False)
+# df = pandas.read_csv(csv_path)
+# df["code"] = codes
+# df["nameCode"] = nameCodes
+# df.to_csv(csv_path, index=False)
 
 
 
@@ -120,31 +120,39 @@ df.to_csv(csv_path, index=False)
 """
 切分数据集
 """
-# raw_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\dataset.txt"
+# raw_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\焊接件.txt"
 # train_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\train.txt"
 # val_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\val.txt"
-# test_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\test.txt"
 
 # with open(raw_txt_path, "r") as f:
 #     lines = f.readlines()
-
 
 # import random
 # random.shuffle(lines)
 
 # train_num = int(len(lines) * 0.8)
-# val_num = int(len(lines) * 0.1)
-# test_num = len(lines) - train_num - val_num
-
 
 # with open(train_txt_path, "w") as f:
 #     f.writelines(lines[:train_num])
 
 # with open(val_txt_path, "w") as f:
-#     f.writelines(lines[train_num:train_num+val_num])
+#     f.writelines(lines[train_num:])
 
-# with open(test_txt_path, "w") as f:
-#     f.writelines(lines[train_num+val_num:])
+src = r"E:\Project\AutoPricing\datasets\atwcad\train.txt"
+
+with open(src, "r") as f:
+    lines = f.readlines()
+
+new_lines = []
+for l in lines:
+    code, varstr = l.strip().split("  ")
+    values = varstr.split(' ')
+    vars, label = values[:-2], values[-1]
+    new_line = code + "  " + " ".join(vars) + " " + label + "\n"
+    new_lines.append(new_line)
+
+with open(src, "w") as f:
+    f.writelines(new_lines)
 
 
 

@@ -245,7 +245,7 @@ class _NodeConv(nn.Module):
         out_feats,
         edge_feats,
         num_mlp_layers=2,
-        hidden_mlp_dim=64,
+        hidden_mlp_dim=32,
     ):
         """
         This module implements Eq. 1 from the paper where the node features are

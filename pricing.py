@@ -31,7 +31,7 @@ from uvnet.models import Regression
 # Define the arguments for the script
 accelerator = "gpu"             # "cpu" or "gpu" or "tpu"
 devices = [0]                     # number of devices to use for training (only for GPU/TPU)
-max_epochs = 1000                # maximum number of epochs to train (only for training)
+max_epochs = 500                # maximum number of epochs to train (only for training)
 check_val_every_n_epoch = 5     # check validation every n epochs (only for training)
 accumulate_grad_batches = 2     # number of batches to accumulate before performing an optimization step (only for training)
 amp_backend = "native"          # mixed precision backend to use. Options: 'native', 'apex'
@@ -39,6 +39,16 @@ auto_lr_find = True             # whether to perform automatic learning rate fin
 auto_scale_batch_size = "power"    # whether to perform automatic scaling of the batch size (only for training)
 use_swa = True                  # whether to use stochastic weight averaging (only for training)
 use_CyclicLR = True             # whether to use cyclical learning rate (only for training)
+
+center_and_scale = False         # whether to center and scale the data before training (only for training)
+edge_input_dim = 3              # number of edge features
+face_input_dim = 3              # number of face features
+vars_dim = 8                    # number of variance features
+crv_emb_dim=32
+srf_emb_dim=32
+graph_emb_dim=64
+
+log_every_n_steps = 10
 
 datasetDir = r"E:\Project\AutoPricing\datasets\atwcad"
 checkpointPath = r"E:\LGJ\program\UV-Net\results\regression\0115\134025\epoch=564-val_loss=3.20-val_acc=0.84.ckpt"
@@ -57,7 +67,7 @@ parser.add_argument("--dataset",
 parser.add_argument("--dataset_path", type=str, 
                     default=datasetDir,
                     help="Path to dataset")
-parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
+parser.add_argument("--batch_size", type=int, default=200, help="Batch size")
 parser.add_argument(
     "--num_workers",
     type=int,
@@ -112,7 +122,7 @@ trainer = Trainer.from_argparse_args(
     amp_backend=amp_backend,
     auto_lr_find=auto_lr_find,
     auto_scale_batch_size=auto_scale_batch_size,  
-    log_every_n_steps=23,  
+    log_every_n_steps=log_every_n_steps,  
 )
 
 if args.dataset == "atwcad":
@@ -139,9 +149,20 @@ results/{args.experiment_name}/{month_day}/{hour_min_second}/best.ckpt
     """
     )
     model = Regression(num_classes=1,
-                       vars_dim=8)
-    train_data = Dataset(root_dir=args.dataset_path, mode="train")
-    val_data = Dataset(root_dir=args.dataset_path, mode="val")
+                        vars_dim=vars_dim,
+                        crv_input_dim=edge_input_dim,
+                        srf_input_dim=face_input_dim,
+                        crv_emb_dim=crv_emb_dim,
+                        srf_emb_dim=srf_emb_dim,
+                        graph_emb_dim=graph_emb_dim,
+                        lossfn='L1'
+                        )
+    train_data = Dataset(root_dir=args.dataset_path, 
+                         center_and_scale=center_and_scale, 
+                         mode="train")
+    val_data = Dataset(root_dir=args.dataset_path, 
+                       center_and_scale=center_and_scale, 
+                       mode="val")
     train_loader = train_data.get_dataloader(
         batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers
     )

@@ -204,6 +204,8 @@ class UVNetRegressor(nn.Module):
         self,
         num_classes,
         vars_dim,
+        crv_input_dim=6,
+        srf_input_dim=7,
         crv_emb_dim=64,
         srf_emb_dim=64,
         graph_emb_dim=128,
@@ -224,16 +226,22 @@ class UVNetRegressor(nn.Module):
         super().__init__()
         # A 1D convolutional network to encode B-rep edge geometry represented as 1D UV-grids
         self.curv_encoder = uvnet.encoders.UVNetCurveEncoder(
-            in_channels=6, output_dims=crv_emb_dim
+            in_channels=crv_input_dim, output_dims=crv_emb_dim
         )
-        # A 2D convolutional network to encode B-rep face geometry represented as 2D UV-grids
-        self.surf_encoder = uvnet.encoders.UVNetSurfaceEncoder(
-            in_channels=7, output_dims=srf_emb_dim
+        # # A 2D convolutional network to encode B-rep face geometry represented as 2D UV-grids
+        # self.surf_encoder = uvnet.encoders.UVNetSurfaceEncoder(
+        #     in_channels=srf_input_dim, output_dims=srf_emb_dim
+        # )
+        self.surf_encoder = uvnet.encoders.UVNetCurveEncoder(
+            in_channels=srf_input_dim, output_dims=srf_emb_dim
         )
         # A graph neural network that message passes face and edge features
         self.graph_encoder = uvnet.encoders.UVNetGraphEncoder(
-            srf_emb_dim, crv_emb_dim, graph_emb_dim,
-        )
+                                                            input_dim=srf_emb_dim, 
+                                                            input_edge_dim=crv_emb_dim, 
+                                                            output_dim=graph_emb_dim,
+                                                            hidden_dim=crv_emb_dim,
+                                                            )
         # A non-linear classifier that maps global graph embeddings to output dimensions
         self.reg = _NonLinearClassifier(graph_emb_dim+vars_dim, num_classes, dropout=dropout)
 
@@ -272,31 +280,43 @@ class Regression(pl.LightningModule):
     PyTorch Lightning module to train/test the regressor.
     """
 
-    def __init__(self, num_classes=1, vars_dim=11):
+    def __init__(self, 
+                num_classes=1, 
+                vars_dim=11, 
+                crv_input_dim=6, 
+                srf_input_dim=7,
+                crv_emb_dim=64,
+                srf_emb_dim=64,
+                graph_emb_dim=128,
+                lossfn = 'L1'):
         """
         Args:
             num_classes (int): Number of output dimensions
         """
         super().__init__()
         self.save_hyperparameters()
-        self.model = UVNetRegressor(num_classes, vars_dim)
-        self.train_mae = torchmetrics.MeanAbsoluteError()
-        self.val_mae = torchmetrics.MeanAbsoluteError()
-        self.test_mae = torchmetrics.MeanAbsoluteError()
+        self.model = UVNetRegressor(num_classes, 
+                                    vars_dim, 
+                                    crv_input_dim, 
+                                    srf_input_dim,
+                                    crv_emb_dim,
+                                    srf_emb_dim,
+                                    graph_emb_dim)
+        self.loss = F.l1_loss if lossfn == 'L1' else F.mse_loss
 
     def forward(self, batch):
         inputs = batch["graph"].to(self.device)
-        inputs.ndata["x"] = inputs.ndata["x"].permute(0, 3, 1, 2)
+        inputs.ndata["x"] = inputs.ndata["x"].permute(0, 2, 1)
         inputs.edata["x"] = inputs.edata["x"].permute(0, 2, 1)
         labels = batch["label"].to(self.device)
         vars = batch["vars"].to(self.device) 
         logits = self.model(inputs, vars)
         logits = torch.squeeze(logits)
-        loss = F.l1_loss(logits, labels, reduction="mean")
+        loss = self.loss(logits, labels, reduction="mean")
         preds = logits
         acc = 1 - torch.mean(torch.abs(preds - labels) / labels)
         return {"loss": loss, "acc": acc}
-    
+
     def training_step(self, batch, batch_idx):
         return self.forward(batch)
 
@@ -305,7 +325,7 @@ class Regression(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         inputs = batch["graph"].to(self.device)
-        inputs.ndata["x"] = inputs.ndata["x"].permute(0, 3, 1, 2)
+        inputs.ndata["x"] = inputs.ndata["x"].permute(0, 2, 1)
         inputs.edata["x"] = inputs.edata["x"].permute(0, 2, 1)
         labels = batch["label"].to(self.device)
         vars = batch["vars"].to(self.device)

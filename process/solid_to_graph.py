@@ -17,7 +17,6 @@ import numpy as np
 import torch
 from occwl.graph import face_adjacency
 from occwl.io import load_step
-from occwl.uvgrid import ugrid, uvgrid
 from OCC.Core.GProp import GProp_GProps
 from OCC.Core.BRepGProp import brepgprop
 from OCC.Core.BRep import BRep_Tool
@@ -156,8 +155,8 @@ class StepConverter(object):
             graph_edge_feat.append(edge_feat)
 
 
-        graph_face_feat = np.asarray(graph_face_feat)
-        graph_edge_feat = np.asarray(graph_edge_feat)
+        graph_face_feat = np.asarray(graph_face_feat) # (num_faces, 6, 3)
+        graph_edge_feat = np.asarray(graph_edge_feat) # (num_edges, 6, 3)
 
         # Convert face-adj graph to DGL format
         edges = list(graph.edges)

@@ -41,6 +41,16 @@ auto_scale_batch_size = "power"    # whether to perform automatic scaling of the
 use_swa = True                  # whether to use stochastic weight averaging (only for training)
 use_CyclicLR = True             # whether to use cyclical learning rate (only for training)
 
+center_and_scale = False         # whether to center and scale the data before training (only for training)
+edge_input_dim = 3              # number of edge features
+face_input_dim = 3              # number of face features
+vars_dim = 7                    # number of variance features
+crv_emb_dim=64
+srf_emb_dim=64
+graph_emb_dim=128
+
+log_every_n_steps = 10
+
 datasetDir = r"E:\Project\AutoPricing\datasets\atwmaterial"
 checkpointPath = r"E:\LGJ\program\UV-Net\results\regression\0115\120043\epoch=884-val_loss=34.56-val_acc=0.72.ckpt"
 
@@ -113,7 +123,7 @@ trainer = Trainer.from_argparse_args(
     amp_backend=amp_backend,
     auto_lr_find=auto_lr_find,
     auto_scale_batch_size=auto_scale_batch_size,  
-    log_every_n_steps=30,  
+    log_every_n_steps=log_every_n_steps,  
 )
 
 if args.dataset == "atwcad":
@@ -142,12 +152,22 @@ results/{args.experiment_name}/{month_day}/{hour_min_second}/best.ckpt
     """
     )
     model = Regression(num_classes=1,
-                       vars_dim=7)
-    train_data = Dataset(root_dir=args.dataset_path, mode="train")
-    val_data = Dataset(root_dir=args.dataset_path, mode="val")
+                        vars_dim=vars_dim,
+                        crv_input_dim=edge_input_dim,
+                        srf_input_dim=face_input_dim,
+                        crv_emb_dim=crv_emb_dim,
+                        srf_emb_dim=srf_emb_dim,
+                        graph_emb_dim=graph_emb_dim
+                        )
+    train_data = Dataset(root_dir=args.dataset_path, 
+                         center_and_scale=center_and_scale, 
+                         mode="train")
+    val_data = Dataset(root_dir=args.dataset_path, 
+                       center_and_scale=center_and_scale, 
+                       mode="val")
     train_loader = train_data.get_dataloader(
         batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers
-    )
+    ) 
     val_loader = val_data.get_dataloader(
         batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, drop_last=False
     )
