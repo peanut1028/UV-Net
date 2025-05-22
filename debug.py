@@ -138,21 +138,21 @@ get the three-view drawing from a step file(not accurate)
 # with open(val_txt_path, "w") as f:
 #     f.writelines(lines[train_num:])
 
-src = r"E:\Project\AutoPricing\datasets\atwcad\train.txt"
+# src = r"E:\Project\AutoPricing\datasets\atwcad\train.txt"
 
-with open(src, "r") as f:
-    lines = f.readlines()
+# with open(src, "r") as f:
+#     lines = f.readlines()
 
-new_lines = []
-for l in lines:
-    code, varstr = l.strip().split("  ")
-    values = varstr.split(' ')
-    vars, label = values[:-2], values[-1]
-    new_line = code + "  " + " ".join(vars) + " " + label + "\n"
-    new_lines.append(new_line)
+# new_lines = []
+# for l in lines:
+#     code, varstr = l.strip().split("  ")
+#     values = varstr.split(' ')
+#     vars, label = values[:-2], values[-1]
+#     new_line = code + "  " + " ".join(vars) + " " + label + "\n"
+#     new_lines.append(new_line)
 
-with open(src, "w") as f:
-    f.writelines(new_lines)
+# with open(src, "w") as f:
+#     f.writelines(new_lines)
 
 
 
@@ -181,3 +181,7 @@ with open(src, "w") as f:
 #     f.writelines(new_lines)
 
 
+import torch
+
+data = torch.load(r"E:\Project\AutoPricing\datasets\temp\r0901.pt")
+print(data)
