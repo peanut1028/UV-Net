@@ -13,12 +13,12 @@
 # here put the import lib
 
 import pathlib
-import string
 import os.path as osp
 import torch
-from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
-
+import numpy as np
+import joblib
 from datasets.base import BaseDataset
 
 
@@ -29,7 +29,7 @@ class ATWMATDataset(BaseDataset):
         self,
         root_dir,
         mode="train",
-        center_and_scale=True,
+        center_and_scale=False,
         random_rotate=False,
     ):
         """
@@ -66,8 +66,12 @@ class ATWMATDataset(BaseDataset):
         self.load_data_from_txt()
 
         print(f"Loading {mode} data...")
-        self.load_graphs(center_and_scale)
+        self.load_graphs()
         print("Done loading {} files".format(len(self.data)))
+
+        # Normaliza
+        if center_and_scale:
+            self.scale()
 
     def load_data_from_txt(self):
         path = pathlib.Path(self.root_dir)
@@ -94,9 +98,6 @@ class ATWMATDataset(BaseDataset):
                 # Catch the case of graphs with no edges
                 continue
             self.data.append(sample)
-        # 中心化和缩放
-        if center_and_scale:
-            self.center_and_scale()
         self.convert_to_float32()
 
     def load_one_graph(self, index):
@@ -106,14 +107,76 @@ class ATWMATDataset(BaseDataset):
         # Load the graph using base class method
         sample = super().load_one_graph(filename)
         # Additionally get the label from the filename and store it in the sample dict
-        sample["vars"] = torch.tensor(self.vars[index], dtype=torch.float32)
+        sample["vars"] = torch.tensor([self.vars[index]], dtype=torch.float32)
         sample["label"] = torch.tensor(self.labels[index], dtype=torch.float32)
         return sample
+
+    def scale(self, filter_columns_face=[0, 2, 3, 4], filter_columns_edge=[0, 2, 5], filter_columns_var=[0, 1, 3]):
+        scalerPath = osp.join(self.root_dir, "scaler.joblib")
+        if osp.exists(scalerPath):
+            faceScaler, edgeScaler, varScaler, labelScaler = joblib.load(scalerPath)
+        else:
+            faceScaler, edgeScaler = self.get_graph_scaler(filter_columns_face, filter_columns_edge)
+            varScaler = self.get_vars_scaler(filter_columns_var)
+            labelScaler = StandardScaler().fit(np.array(self.labels).reshape(-1, 1))
+            joblib.dump((faceScaler, edgeScaler, varScaler, labelScaler), scalerPath)
+        for i in range(len(self.data)):
+            faceFeat = self.data[i]["graph"].ndata["x"].numpy().reshape(-1, 18)
+            edgeFeat = self.data[i]["graph"].edata["x"].numpy().reshape(-1, 18)
+            faceFeatNoScale = faceFeat[:, filter_columns_face]
+            edgeFeatNoScale = edgeFeat[:, filter_columns_edge]
+            faceFeatScale = np.delete(faceFeat, filter_columns_face, axis=1)
+            edgeFeatScale = np.delete(edgeFeat, filter_columns_edge, axis=1)
+            faceFeatScale = faceScaler.transform(faceFeatScale)
+            edgeFeatScale = edgeScaler.transform(edgeFeatScale)
+            faceFeat = np.insert(faceFeatScale, filter_columns_face, faceFeatNoScale, axis=1)
+            edgeFeat = np.insert(edgeFeatScale, filter_columns_edge, edgeFeatNoScale, axis=1)
+            self.data[i]["graph"].ndata["x"] = torch.from_numpy(faceFeat.reshape(-1, 6, 3))
+            self.data[i]["graph"].edata["x"] = torch.from_numpy(edgeFeat.reshape(-1, 6, 3))
+
+            vars = self.data[i]["vars"].numpy().reshape(-1, 7)
+            varsNoScale = vars[:, filter_columns_var]
+            varsScale = np.delete(vars, filter_columns_var, axis=1)
+            varsScale = varScaler.transform(varsScale)
+            mask = np.zeros(vars.shape[1], dtype=bool)
+            mask[filter_columns_var] = True
+            vars[:, ~mask] = varsScale
+            vars[:, mask] = varsNoScale
+            self.data[i]["vars"] = torch.from_numpy(vars)
+
+            label = self.data[i]["label"].numpy()
+            label = labelScaler.transform([[label]])[0][0]
+            self.data[i]["label"] = torch.tensor(label, dtype=torch.float32)
+
+    def get_graph_scaler(self, filter_columns_face=None, filter_columns_edge=None):
+        # collate graph attributes
+        faceAttrs = []
+        edgeAttrs = []
+        for graph in self.data:
+            faceAttrs.append(graph["graph"].ndata["x"].numpy().reshape(-1, 18))
+            edgeAttrs.append(graph["graph"].edata["x"].numpy().reshape(-1, 18))
+        faceAttrs = np.concatenate(faceAttrs, axis=0)
+        edgeAttrs = np.concatenate(edgeAttrs, axis=0)
+        # filter out constant attributes
+        if filter_columns_face is not None:
+            faceAttrs = np.delete(faceAttrs, filter_columns_face, axis=1)
+        if filter_columns_edge is not None:
+            edgeAttrs = np.delete(edgeAttrs, filter_columns_edge, axis=1)
+        faceAttrsScaler = StandardScaler().fit(faceAttrs)
+        edgeAttrsScaler = StandardScaler().fit(edgeAttrs)
+        return faceAttrsScaler, edgeAttrsScaler
+
+    def get_vars_scaler(self, filter_columns=None):
+        vars = np.array(self.vars)
+        if filter_columns is not None:
+            vars = np.delete(vars, filter_columns, axis=1)
+        varsScaler = StandardScaler().fit(vars)
+        return varsScaler
 
     def _collate(self, batch):
         collated = super()._collate(batch)
         collated["label"] =  torch.Tensor([x["label"] for x in batch])
-        collated["vars"] =  torch.cat([x["vars"].unsqueeze(0) for x in batch], dim=0)
+        collated["vars"] =  torch.cat([x["vars"] for x in batch], dim=0)
         return collated
 
 

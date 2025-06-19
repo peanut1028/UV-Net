@@ -3,7 +3,10 @@ import torchmetrics
 import torch
 from torch import nn
 import torch.nn.functional as F
+import joblib
 import uvnet.encoders
+from ops.loss import *
+from robust_loss_pytorch import AdaptiveLossFunction
 
 
 class _NonLinearClassifier(nn.Module):
@@ -288,7 +291,9 @@ class Regression(pl.LightningModule):
                 crv_emb_dim=64,
                 srf_emb_dim=64,
                 graph_emb_dim=128,
-                lossfn = 'L1'):
+                lossfn='L1',
+                scheduler=None,
+                scaler_file=None):
         """
         Args:
             num_classes (int): Number of output dimensions
@@ -302,7 +307,24 @@ class Regression(pl.LightningModule):
                                     crv_emb_dim,
                                     srf_emb_dim,
                                     graph_emb_dim)
-        self.loss = F.l1_loss if lossfn == 'L1' else F.mse_loss
+        if lossfn == 'L1':
+            self.loss = F.l1_loss
+        elif lossfn == 'MSE':
+            self.loss = F.mse_loss
+        elif lossfn == 'Adaptive':
+            self.loss = AdaptiveRelativeLoss()
+        elif lossfn == 'Robust':
+            self.loss = AdaptiveLossFunction(num_dims=1, float_dtype=torch.float32, device='cuda')
+        self.scheduler = scheduler
+        self.scaler = None
+        if scaler_file:
+            faceScaler, edgeScaler, varScaler, labelScaler = joblib.load(scaler_file)
+            self.scaler = labelScaler
+
+    def elastic_penalty(self, model, l1_ratio=0.5):
+        l1_norm = sum(p.abs().sum() for p in model.parameters())
+        l2_norm = sum(p.pow(2).sum() for p in model.parameters())
+        return l1_ratio * l1_norm + (1 - l1_ratio) * l2_norm
 
     def forward(self, batch):
         inputs = batch["graph"].to(self.device)
@@ -312,8 +334,15 @@ class Regression(pl.LightningModule):
         vars = batch["vars"].to(self.device) 
         logits = self.model(inputs, vars)
         logits = torch.squeeze(logits)
-        loss = self.loss(logits, labels, reduction="mean")
+        if isinstance(self.loss, AdaptiveRelativeLoss):
+            self.loss.set_y_var(labels) 
+        loss = self.loss(logits, labels, reduction="mean") #+ 0.001 * self.elastic_penalty(self.model, 0.5)
         preds = logits
+        if self.scaler:
+            preds = self.scaler.inverse_transform(preds.cpu().detach().numpy().reshape(-1, 1))
+            labels = self.scaler.inverse_transform(labels.cpu().numpy().reshape(-1, 1))
+            preds = torch.from_numpy(preds)
+            labels = torch.from_numpy(labels)
         acc = 1 - torch.mean(torch.abs(preds - labels) / labels)
         return {"loss": loss, "acc": acc}
 
@@ -355,8 +384,8 @@ class Regression(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=0.01)
         # scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, 1, 0.001)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
-        # return [optimizer], [scheduler]
-        return optimizer
+        ops = ([optimizer], [scheduler]) if self.scheduler else optimizer
+        return ops
 
 
 

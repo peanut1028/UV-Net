@@ -17,6 +17,7 @@ import pathlib
 import time
 import pandas as pd
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -51,7 +52,7 @@ graph_emb_dim=64
 log_every_n_steps = 10
 
 datasetDir = r"E:\Project\AutoPricing\datasets\atwcad"
-checkpointPath = r"E:\LGJ\program\UV-Net\results\regression\0115\134025\epoch=564-val_loss=3.20-val_acc=0.84.ckpt"
+checkpointPath = r"E:\LGJ\program\UV-Net\results\regression\0611\151927\epoch=444-val_loss=2.60-val_acc=0.86.ckpt"
 
 parser = argparse.ArgumentParser("UV-Net solid model regression")
 parser.add_argument(
@@ -148,15 +149,6 @@ results/{args.experiment_name}/{month_day}/{hour_min_second}/best.ckpt
 -----------------------------------------------------------------------------------
     """
     )
-    model = Regression(num_classes=1,
-                        vars_dim=vars_dim,
-                        crv_input_dim=edge_input_dim,
-                        srf_input_dim=face_input_dim,
-                        crv_emb_dim=crv_emb_dim,
-                        srf_emb_dim=srf_emb_dim,
-                        graph_emb_dim=graph_emb_dim,
-                        lossfn='L1'
-                        )
     train_data = Dataset(root_dir=args.dataset_path, 
                          center_and_scale=center_and_scale, 
                          mode="train")
@@ -169,6 +161,17 @@ results/{args.experiment_name}/{month_day}/{hour_min_second}/best.ckpt
     val_loader = val_data.get_dataloader(
         batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, drop_last=False
     )
+    model = Regression(num_classes=1,
+                    vars_dim=vars_dim,
+                    crv_input_dim=edge_input_dim,
+                    srf_input_dim=face_input_dim,
+                    crv_emb_dim=crv_emb_dim,
+                    srf_emb_dim=srf_emb_dim,
+                    graph_emb_dim=graph_emb_dim,
+                    lossfn='L1',
+                    scheduler='cosine',
+                    # scaler_file=os.path.join(args.dataset_path, "scaler.joblib")
+                    )
     trainer.fit(model, train_loader, val_loader)
 else:
     # Test

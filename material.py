@@ -16,6 +16,7 @@ import argparse
 import pathlib
 import time
 import pandas as pd
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from pytorch_lightning import Trainer
@@ -45,9 +46,12 @@ center_and_scale = False         # whether to center and scale the data before t
 edge_input_dim = 3              # number of edge features
 face_input_dim = 3              # number of face features
 vars_dim = 7                    # number of variance features
-crv_emb_dim=64
-srf_emb_dim=64
-graph_emb_dim=128
+crv_emb_dim=32
+srf_emb_dim=32
+graph_emb_dim=64
+# crv_emb_dim=64
+# srf_emb_dim=64
+# graph_emb_dim=128
 
 log_every_n_steps = 10
 
@@ -151,14 +155,6 @@ results/{args.experiment_name}/{month_day}/{hour_min_second}/best.ckpt
 -----------------------------------------------------------------------------------
     """
     )
-    model = Regression(num_classes=1,
-                        vars_dim=vars_dim,
-                        crv_input_dim=edge_input_dim,
-                        srf_input_dim=face_input_dim,
-                        crv_emb_dim=crv_emb_dim,
-                        srf_emb_dim=srf_emb_dim,
-                        graph_emb_dim=graph_emb_dim
-                        )
     train_data = Dataset(root_dir=args.dataset_path, 
                          center_and_scale=center_and_scale, 
                          mode="train")
@@ -171,7 +167,19 @@ results/{args.experiment_name}/{month_day}/{hour_min_second}/best.ckpt
     val_loader = val_data.get_dataloader(
         batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, drop_last=False
     )
+    model = Regression(num_classes=1,
+                    vars_dim=vars_dim,
+                    crv_input_dim=edge_input_dim,
+                    srf_input_dim=face_input_dim,
+                    crv_emb_dim=crv_emb_dim,
+                    srf_emb_dim=srf_emb_dim,
+                    graph_emb_dim=graph_emb_dim,
+                    lossfn='L1',
+                    # scheduler='cosine',
+                    # scaler_file=os.path.join(args.dataset_path, "scaler.joblib")
+                    )
     trainer.fit(model, train_loader, val_loader)
+
 else:
     # Test
     assert (

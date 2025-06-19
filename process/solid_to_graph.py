@@ -96,12 +96,12 @@ class StepConverter(object):
 
             # concatenate face features
             face_feat = np.array(
-                                [[face_type, face_area, face_loop_num],
-                                [face_orientation, face_closed, face_perimeter],
-                                [r11, r21, r31],
-                                [r12, r22, r32],
-                                [r13, r23, r33],
-                                [dx, dy, dz]]
+                                [[face_type, face_area, face_loop_num],             # *0, 1, *2
+                                [face_orientation, face_closed, face_perimeter],    # *3, *4, 5
+                                [r11, r21, r31],                                    # 6, 7, 8
+                                [r12, r22, r32],                                    # 9, 10, 11
+                                [r13, r23, r33],                                    # 12, 13, 14
+                                [dx, dy, dz]]                                       # 15, 16, 17
                                 )
             graph_face_feat.append(face_feat)
 
@@ -145,12 +145,12 @@ class StepConverter(object):
 
             # concatenate edge features
             edge_feat = np.array(
-                                [[edge_type, edge_length, edge_orientation],
-                                [p1, p2, edge_convexity],
-                                [r11, r21, r31],
-                                [r12, r22, r32],
-                                [r13, r23, r33],
-                                [dx, dy, dz]]
+                                [[edge_type, edge_length, edge_orientation],    # *0, 1, *2
+                                [p1, p2, edge_convexity],                       # 3, 4, *5
+                                [r11, r21, r31],                                # 6, 7, 8
+                                [r12, r22, r32],                                # 9, 10, 11
+                                [r13, r23, r33],                                # 12, 13, 14
+                                [dx, dy, dz]]                                   # 15, 16, 17
                                 )
             graph_edge_feat.append(edge_feat)
 
