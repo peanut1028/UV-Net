@@ -114,7 +114,7 @@ class _MLP(nn.Module):
             return self.linears[-1](h)
 
 
-class UVNetCurveEncoder(nn.Module):
+class ATWPartEncoder(nn.Module):
     def __init__(self, in_channels=6, output_dims=64):
         """
         This is the 1D convolutional network that extracts features from the B-rep edge
@@ -127,7 +127,7 @@ class UVNetCurveEncoder(nn.Module):
                                          curve tangents. Defaults to 6.
             output_dims (int, optional): Output curve embedding dimension. Defaults to 64.
         """
-        super(UVNetCurveEncoder, self).__init__()
+        super(ATWPartEncoder, self).__init__()
         self.in_channels = in_channels
         self.conv1 = _conv1d(in_channels, 64, kernel_size=3, padding=1, bias=False)
         self.conv2 = _conv1d(64, 128, kernel_size=3, padding=1, bias=False)
@@ -230,7 +230,7 @@ class _EdgeConv(nn.Module):
         self.eps = torch.nn.Parameter(torch.FloatTensor([0.0]))
 
     def forward(self, graph, nfeat, efeat):
-        src, dst = graph.edges()
+        src, dst = graph.edges()  # get source and destination node indices for each edge
         proj1, proj2 = self.proj(nfeat[src]), self.proj(nfeat[dst])
         agg = proj1 + proj2
         h = self.mlp((1 + self.eps) * efeat + agg)

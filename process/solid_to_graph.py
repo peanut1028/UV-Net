@@ -114,7 +114,7 @@ class StepConverter(object):
             if not edge.has_curve():
                 continue
 
-            # Get edge type(int)
+            # Get edge type(GeomAbs_CurveType_Enum:int)
             edge_type = edge.curve_type_enum()
             # Get edge length(float)
             edge_length = edge.length()

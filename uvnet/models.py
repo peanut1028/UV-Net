@@ -94,7 +94,7 @@ class UVNetClassifier(nn.Module):
             dropout (float, optional): Dropout for the final non-linear classifier. Defaults to 0.3.
         """
         super().__init__()
-        self.curv_encoder = uvnet.encoders.UVNetCurveEncoder(
+        self.curv_encoder = uvnet.encoders.ATWPartEncoder(
             in_channels=6, output_dims=crv_emb_dim
         )
         self.surf_encoder = uvnet.encoders.UVNetSurfaceEncoder(
@@ -228,14 +228,14 @@ class UVNetRegressor(nn.Module):
         """
         super().__init__()
         # A 1D convolutional network to encode B-rep edge geometry represented as 1D UV-grids
-        self.curv_encoder = uvnet.encoders.UVNetCurveEncoder(
+        self.curv_encoder = uvnet.encoders.ATWPartEncoder(
             in_channels=crv_input_dim, output_dims=crv_emb_dim
         )
         # # A 2D convolutional network to encode B-rep face geometry represented as 2D UV-grids
         # self.surf_encoder = uvnet.encoders.UVNetSurfaceEncoder(
         #     in_channels=srf_input_dim, output_dims=srf_emb_dim
         # )
-        self.surf_encoder = uvnet.encoders.UVNetCurveEncoder(
+        self.surf_encoder = uvnet.encoders.ATWPartEncoder(
             in_channels=srf_input_dim, output_dims=srf_emb_dim
         )
         # A graph neural network that message passes face and edge features
@@ -284,6 +284,7 @@ class Regression(pl.LightningModule):
     """
 
     def __init__(self, 
+                 batch_size=64,
                 num_classes=1, 
                 vars_dim=11, 
                 crv_input_dim=6, 
@@ -293,6 +294,7 @@ class Regression(pl.LightningModule):
                 graph_emb_dim=128,
                 lossfn='L1',
                 scheduler=None,
+                init_lr=1e-2,
                 scaler_file=None):
         """
         Args:
@@ -300,6 +302,7 @@ class Regression(pl.LightningModule):
         """
         super().__init__()
         self.save_hyperparameters()
+        self.batch_size = batch_size
         self.model = UVNetRegressor(num_classes, 
                                     vars_dim, 
                                     crv_input_dim, 
@@ -316,6 +319,7 @@ class Regression(pl.LightningModule):
         elif lossfn == 'Robust':
             self.loss = AdaptiveLossFunction(num_dims=1, float_dtype=torch.float32, device='cuda')
         self.scheduler = scheduler
+        self.lr = init_lr
         self.scaler = None
         if scaler_file:
             faceScaler, edgeScaler, varScaler, labelScaler = joblib.load(scaler_file)
@@ -360,7 +364,13 @@ class Regression(pl.LightningModule):
         vars = batch["vars"].to(self.device)
         logits = self.model(inputs, vars)
         logits = torch.squeeze(logits)
-        return {"labels": labels, "preds": logits}
+        preds = logits
+        if self.scaler:
+            preds = self.scaler.inverse_transform(logits.cpu().detach().numpy().reshape(-1, 1))
+            labels = self.scaler.inverse_transform(labels.cpu().numpy().reshape(-1, 1))
+            preds = torch.from_numpy(preds)
+            labels = torch.from_numpy(labels)
+        return {"labels": labels, "preds": preds}
 
     def training_epoch_end(self, outputs):
         '''
@@ -375,17 +385,31 @@ class Regression(pl.LightningModule):
         self.log("train_acc", train_acc, on_step=False, on_epoch=True, sync_dist=True)    
 
     def validation_epoch_end(self, outputs):
+        val_loss = 0.0
         val_loss = torch.stack([x['loss'] for x in outputs]).mean()
         val_acc = torch.stack([x['acc'] for x in outputs]).mean()
         self.log("val_loss", val_loss, on_step=False, on_epoch=True, sync_dist=True)
         self.log("val_acc", val_acc, on_step=False, on_epoch=True, sync_dist=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=0.01)
-        # scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, 1, 0.001)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
-        ops = ([optimizer], [scheduler]) if self.scheduler else optimizer
-        return ops
+        optimizer = torch.optim.Adam(self.parameters(), self.lr)
+        scheduler = None
+        monitor = None
+        if self.scheduler == 'reducelronplateau':
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
+            monitor = 'val_loss'
+            scheduler = {"scheduler": scheduler, 
+                         "strict": False, 
+                         "monitor": monitor}
+        elif self.scheduler == 'cosine':
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
+        elif self.scheduler == 'linear':
+            scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, 1, 0.001)
+        elif self.scheduler == 'multistep':
+            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[300, 700], gamma=0.1)
+        if self.scheduler == None:
+            return optimizer
+        return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": monitor}
 
 
 
@@ -423,7 +447,7 @@ class UVNetSegmenter(nn.Module):
         """
         super().__init__()
         # A 1D convolutional network to encode B-rep edge geometry represented as 1D UV-grids
-        self.curv_encoder = uvnet.encoders.UVNetCurveEncoder(
+        self.curv_encoder = uvnet.encoders.ATWPartEncoder(
             in_channels=crv_in_channels, output_dims=crv_emb_dim
         )
         # A 2D convolutional network to encode B-rep face geometry represented as 2D UV-grids

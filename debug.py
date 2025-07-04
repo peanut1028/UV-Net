@@ -120,9 +120,9 @@ get the three-view drawing from a step file(not accurate)
 """
 切分数据集
 """
-# raw_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\焊接件.txt"
-# train_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\train.txt"
-# val_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\val.txt"
+# raw_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v5\total.txt"
+# train_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v5\train.txt"
+# val_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v5\val.txt"
 
 # with open(raw_txt_path, "r") as f:
 #     lines = f.readlines()
@@ -130,7 +130,7 @@ get the three-view drawing from a step file(not accurate)
 # import random
 # random.shuffle(lines)
 
-# train_num = int(len(lines) * 0.8)
+# train_num = int(len(lines) * 0.9)
 
 # with open(train_txt_path, "w") as f:
 #     f.writelines(lines[:train_num])
@@ -138,27 +138,30 @@ get the three-view drawing from a step file(not accurate)
 # with open(val_txt_path, "w") as f:
 #     f.writelines(lines[train_num:])
 
-src = r"E:\Project\AutoPricing\datasets\atwcad\train.txt"
 
-with open(src, "r") as f:
-    lines = f.readlines()
+# # 去掉最后一个输入特征
+# src = r"E:\Project\AutoPricing\datasets\atwcad\train.txt"
 
-new_lines = []
-for l in lines:
-    code, varstr = l.strip().split("  ")
-    values = varstr.split(' ')
-    vars, label = values[:-2], values[-1]
-    new_line = code + "  " + " ".join(vars) + " " + label + "\n"
-    new_lines.append(new_line)
+# with open(src, "r") as f:
+#     lines = f.readlines()
 
-with open(src, "w") as f:
-    f.writelines(new_lines)
+# new_lines = []
+# for l in lines:
+#     code, varstr = l.strip().split("  ")
+#     values = varstr.split(' ')
+#     vars, label = values[:-2], values[-1]
+#     new_line = code + "  " + " ".join(vars) + " " + label + "\n"
+#     new_lines.append(new_line)
+
+# with open(src, "w") as f:
+#     f.writelines(new_lines)
 
 
+# import os
 
-# raw_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v0_1\dataset.txt"
-# dst_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v0_1\test.txt"
-# ref_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\test.txt"
+# raw_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v4_1\total.txt"
+# dst_path = r"E:\Project\AutoPricing\datasets\atwcad\v4_1"
+# ref_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v3_1\val.txt"
 
 # with open(raw_txt_path, "r") as f:
 #     lines = f.readlines()
@@ -171,13 +174,46 @@ with open(src, "w") as f:
 #     code, _ = l.strip().split("  ")
 #     ref.append(code)
 
-# new_lines = []
+# train_lines = []
+# test_lines = []
+# # 需严格匹配，以跟之前的基准对齐
+# for c in ref:
+#     for l in lines:
+#         if not l.strip():
+#             continue
+#         if c in l:
+#             test_lines.append(l)
+#             break
+    
 # for l in lines:
-#     code, _ = l.strip().split("  ")
-#     if code in ref:
-#         new_lines.append(l)
+#     if not l.strip():
+#         continue
+#     if l not in test_lines:
+#         train_lines.append(l)
 
-# with open(dst_txt_path, "w") as f:
-#     f.writelines(new_lines)
+# with open(os.path.join(dst_path, "train.txt"), "w") as f:
+#     f.writelines(train_lines)
+
+# with open(os.path.join(dst_path, "test.txt"), "w") as f:
+#     f.writelines(test_lines)
 
 
+"""
+bin文件查看
+"""
+import dgl
+import os
+import numpy as np
+
+bin_dir = r"E:\Project\AutoPricing\datasets\atwcad\bin"
+face_types = []
+edge_types = []
+for file in os.listdir(bin_dir):
+    if file.endswith(".bin"):
+        g = dgl.load_graphs(os.path.join(bin_dir, file))[0][0]
+        t = g.ndata['x'][:, 0, 0].flatten()
+        face_types += np.unique(t).tolist()
+        e = g.edata['x'][:, 0, 0].flatten()
+        edge_types += np.unique(e).tolist()
+print(set(face_types))
+print(set(edge_types))
