@@ -199,21 +199,58 @@ get the three-view drawing from a step file(not accurate)
 
 
 """
-bin文件查看
+bin文件查看，找到face_type和edge_type集合
 """
-import dgl
-import os
-import numpy as np
+# import dgl
+# import os
+# import numpy as np
 
-bin_dir = r"E:\Project\AutoPricing\datasets\atwcad\bin"
-face_types = []
-edge_types = []
-for file in os.listdir(bin_dir):
-    if file.endswith(".bin"):
-        g = dgl.load_graphs(os.path.join(bin_dir, file))[0][0]
-        t = g.ndata['x'][:, 0, 0].flatten()
-        face_types += np.unique(t).tolist()
-        e = g.edata['x'][:, 0, 0].flatten()
-        edge_types += np.unique(e).tolist()
-print(set(face_types))
-print(set(edge_types))
+# bin_dir = r"E:\Project\AutoPricing\datasets\atwcad\bin"
+# face_types = []
+# edge_types = []
+# for file in os.listdir(bin_dir):
+#     if file.endswith(".bin"):
+#         g = dgl.load_graphs(os.path.join(bin_dir, file))[0][0]
+#         t = g.ndata['x'][:, 0, 0].flatten()
+#         face_types += np.unique(t).tolist()
+#         e = g.edata['x'][:, 0, 0].flatten()
+#         edge_types += np.unique(e).tolist()
+# print(set(face_types))
+# print(set(edge_types))
+
+
+"""
+pt Data查看，找出最大度数
+"""
+import torch
+from torch_geometric.data import Data, DataLoader
+from torch_geometric.utils import degree
+import os
+
+# 假设图文件存储在一个目录中，每个文件是一个Data对象
+directory = r'E:\Project\AutoPricing\datasets\atwcad\pt'
+
+# 初始化最大度数为0
+max_degree = 0
+
+# 遍历目录中的每个文件
+for filename in os.listdir(directory):
+    if filename.endswith('.pt'):  # 假设文件是以.pt为扩展名的PyTorch保存文件
+        filepath = os.path.join(directory, filename)
+        
+        # 加载图数据
+        data = torch.load(filepath)
+        
+        # 确保data是Data对象
+        if isinstance(data, Data):
+            # 计算每个节点的度数
+            node_degrees = degree(data.edge_index[1], num_nodes=data.num_nodes)
+            
+            # 找到当前图的最大度数
+            current_max_degree = node_degrees.max().item()
+            
+            # 更新全局最大度数
+            if current_max_degree > max_degree:
+                max_degree = current_max_degree
+
+print(f"最大度数为: {max_degree}")

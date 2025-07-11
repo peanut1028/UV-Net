@@ -7,12 +7,11 @@
 @Version :   1.0
 @Contact :   lgjhsjt@163.com
 @License :   (C)Copyright 2022-2025
-@Desc    :   convert step files to graph with uv-grid features and save as bin file
+@Desc    :   convert step files to graph with uv-grid features and save as pt file
 '''
 
 # here put the import lib
 import os
-import dgl
 import numpy as np
 import torch
 from occwl.graph import face_adjacency
@@ -25,6 +24,8 @@ import multiprocessing
 from multiprocessing.pool import Pool
 import signal
 from loguru import logger
+
+from torch_geometric.data import Data  # 替换 DGL 为 PyG 的 Data 类
 
 
 
@@ -51,7 +52,7 @@ class StepConverter(object):
     def build_graph(self, solid):
         # Build face adjacency graph with B-rep entities as node and edge features
         graph = face_adjacency(solid)
-        # faces
+        # Compute the UV-grids for faces
         graph_face_feat = []
         for face_idx in graph.nodes:
             # Get the B-rep face
@@ -96,25 +97,23 @@ class StepConverter(object):
 
             # concatenate face features
             face_feat = np.array(
-                                [[face_type, face_area, face_loop_num],             # *0, 1, *2
-                                [face_orientation, face_closed, face_perimeter],    # *3, *4, 5
-                                [r11, r21, r31],                                    # 6, 7, 8
-                                [r12, r22, r32],                                    # 9, 10, 11
-                                [r13, r23, r33],                                    # 12, 13, 14
-                                [dx, dy, dz]]                                       # 15, 16, 17
+                                [[face_type, face_area, face_loop_num],
+                                [face_orientation, face_closed, face_perimeter],
+                                [r11, r21, r31],
+                                [r12, r22, r32],
+                                [r13, r23, r33],
+                                [dx, dy, dz]]
                                 )
             graph_face_feat.append(face_feat)
 
-        # edges
         graph_edge_feat = []
         for edge_idx in graph.edges:
             # Get the B-rep edge
             edge = graph.edges[edge_idx]["edge"]
-            # Ignore dgenerate edges, e.g. at apex of cone
+            # Ignore degenerate edges, e.g. at apex of cone
             if not edge.has_curve():
                 continue
-
-            # Get edge type(GeomAbs_CurveType_Enum:int)
+            # Get edge type(int)
             edge_type = edge.curve_type_enum()
             # Get edge length(float)
             edge_length = edge.length()
@@ -145,40 +144,44 @@ class StepConverter(object):
 
             # concatenate edge features
             edge_feat = np.array(
-                                [[edge_type, edge_length, edge_orientation],    # *0, 1, *2
-                                [p1, p2, edge_convexity],                       # 3, 4, *5
-                                [r11, r21, r31],                                # 6, 7, 8
-                                [r12, r22, r32],                                # 9, 10, 11
-                                [r13, r23, r33],                                # 12, 13, 14
-                                [dx, dy, dz]]                                   # 15, 16, 17
+                                [[edge_type, edge_length, edge_orientation],
+                                [p1, p2, edge_convexity],
+                                [r11, r21, r31],
+                                [r12, r22, r32],
+                                [r13, r23, r33],
+                                [dx, dy, dz]]
                                 )
             graph_edge_feat.append(edge_feat)
-
 
         graph_face_feat = np.asarray(graph_face_feat) # (num_faces, 6, 3)
         graph_edge_feat = np.asarray(graph_edge_feat) # (num_edges, 6, 3)
 
-        # Convert face-adj graph to DGL format
+        # Convert face-adj graph to PyG Data format
         edges = list(graph.edges)
         src = [e[0] for e in edges]
         dst = [e[1] for e in edges]
-        dgl_graph = dgl.graph((src, dst), num_nodes=len(graph.nodes))
-        dgl_graph.ndata["x"] = torch.from_numpy(graph_face_feat)
-        dgl_graph.edata["x"] = torch.from_numpy(graph_edge_feat)
+        edge_index = torch.tensor([src, dst], dtype=torch.long)  # Shape: [2, num_edges]
 
-        return dgl_graph
+        x = torch.from_numpy(graph_face_feat).float()  # Node features
+        edge_attr = torch.from_numpy(graph_edge_feat).float()  # Edge features
+
+        # Create PyG Data object
+        data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+
+        return data
     
     def process_one_file(self, args):
         file, save_path = args
         code, name = os.path.basename(file).split(" ", 1)
-        if os.path.exists(os.path.join(save_path, code + ".bin")):
+        save_file = os.path.join(save_path, code + ".pt")
+        if os.path.exists(save_file):
             return
         try:
             solid = load_step(file)[0]  # Assume there's one solid per file
-            graph = self.build_graph(solid)
-            dgl.data.utils.save_graphs(os.path.join(save_path, code + ".bin"), [graph])
+            data = self.build_graph(solid)
+            torch.save(data, save_file)
         except Exception as e:
-            logger.exception(f"Processing of file {file} wrong")
+            logger.exception(f"Processing of file {file} failed")
 
     def step2graph(self, step_path, save_path):
         os.makedirs(save_path, exist_ok=True)
@@ -194,14 +197,13 @@ class StepConverter(object):
                     try:
                         res.get(timeout=self.timeLimit)
                     except multiprocessing.TimeoutError:
-                        logger.error(f"Processing of file {fn} time out, skip")
+                        logger.error(f"Processing of file {fn} timed out, skip")
                     except Exception as e:
-                        logger.error(f"Processing of file {fn} wrong")
+                        logger.error(f"Processing of file {fn} failed")
             except KeyboardInterrupt:
                 pool.terminate()
                 pool.join()
-        logger.info(f"Successfully convert {len(os.listdir(save_path))} files.")
-
+        print(f"Successfully converted {len(os.listdir(save_path))} files.")
 
 
 class TimeoutError(Exception):
@@ -214,9 +216,8 @@ def initializer():
 
 
 if __name__ == '__main__':
-    file = r"E:\Project\AutoPricing\datasets\temp\bug3883 xr2-ct-214_bolt.stp"
+    # 示例调用
+    step_file = r"E:\Project\AutoPricing\datasets\temp\r0901 ec.stp"
     save_path = r"E:\Project\AutoPricing\datasets\temp"
-    converter = StepConverter(numProcesses=1,
-                              timeLimit=600)
-    converter.process_one_file((file, save_path))
-
+    converter = StepConverter(numProcesses=1)
+    converter.process_one_file((step_file, save_path))

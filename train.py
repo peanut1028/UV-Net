@@ -16,48 +16,49 @@ import pathlib
 import time
 import pandas as pd
 import os
+import json
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.utilities.seed import seed_everything
 import torch
+from torch_geometric.utils import degree
 
 from datasets.atwcad import ATWCADDataset
 from datasets.atwmat import ATWMATDataset
-from uvnet.models import Regression
+from models.models import Regression
 
 
-def main(accelerator = "gpu",             # "cpu" or "gpu" or "tpu"
-        devices = [0],                     # number of devices to use for training (only for GPU/TPU)
-        max_epochs = 500,                # maximum number of epochs to train (only for training)
-        init_lr = 1e-2,                   # initial learning rate (only for training)
-        check_val_every_n_epoch = 5,     # check validation every n epochs (only for training)
-        accumulate_grad_batches = 2,     # number of batches to accumulate before performing an optimization step (only for training)
-        amp_backend = "native",          # mixed precision backend to use. Options: 'native', 'apex'
-        auto_lr_find = False,             # whether to perform automatic learning rate finding (only for training)
-        use_swa = True,                  # whether to use stochastic weight averaging (only for training)
-        use_CyclicLR = True,             # whether to use cyclical learning rate (only for training)
-        center_and_scale = False,         # whether to center and scale the data before training (only for training)
-        edge_input_dim = 3,              # number of edge features
-        face_input_dim = 3,              # number of face features
-        vars_dim = 7,                    # number of variance features
-        crv_emb_dim=32,
-        srf_emb_dim=32,
-        graph_emb_dim=64,
-        log_every_n_steps = 30,
-        datasetDir = r"E:\Project\AutoPricing\datasets",
-        checkpointPath = r"E:\LGJ\program\UV-Net\results\regression\0115\120043\epoch=884-val_loss=34.56-val_acc=0.72.ckpt",
+def main(accelerator="gpu",             # "cpu" or "gpu" or "tpu"
+        devices=[0],                     # number of devices to use for training (only for GPU/TPU)
+        max_epochs=1000,                # maximum number of epochs to train (only for training)
+        check_val_every_n_epoch=5,     # check validation every n epochs (only for training)
+        accumulate_grad_batches=2,     # number of batches to accumulate before performing an optimization step (only for training)
+        amp_backend="native",          # mixed precision backend to use. Options: 'native', 'apex'
+        auto_lr_find=True,             # whether to perform automatic learning rate finding (only for training)
+        auto_scale_batch_size="power",    # whether to perform automatic scaling of the batch size (only for training)
+        center_and_scale=False,         # whether to center and scale the data before training (only for training)
+        log_every_n_steps=20,
+        datasetDir=r"E:\Project\AutoPricing\datasets",
+        checkpointPath=r"E:\LGJ\program\UV-Net\results\regression\0115\120043\epoch=884-val_loss=34.56-val_acc=0.72.ckpt",
         mode="train",
-        dataset="atwmaterial",
+        dataset="atwcad",
         batch_size=256,
         num_workers=0,
-        experiment_name="regression",
+        experiment_name="pna",
+        init_lr=1e-2,
+        num_classes=1,
+        vars_dim=8,
+        node_feat_dim=18,
+        edge_feat_dim=18,
+        hidden_channels=128,
+        num_layers=3,
         lossfn='L1',
         scheduler=None,
         scaler_file=None
-        ):
+    ):
+    datasetDir = os.path.join(datasetDir,dataset)
     results_path = (pathlib.Path(__file__).parent.joinpath("results").joinpath(experiment_name))
-    datasetDir = os.path.join(datasetDir, dataset)
     if not results_path.exists():
         results_path.mkdir(parents=True, exist_ok=True)
 
@@ -65,16 +66,19 @@ def main(accelerator = "gpu",             # "cpu" or "gpu" or "tpu"
     # results/args.experiment_name/0430/123103
     month_day = time.strftime("%m%d")
     hour_min_second = time.strftime("%H%M%S")
+
+    lr_callback = LearningRateMonitor(logging_interval="step")
+
     checkpoint_callback = ModelCheckpoint(
         monitor="val_acc",
         save_top_k=-1,
         dirpath=str(results_path.joinpath(month_day, hour_min_second)),
         filename='{epoch}-{val_loss:.4f}-{val_acc:.4f}',
-        save_last=False,
+        save_last=True,
     )
 
     trainer = Trainer(
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, lr_callback],
         logger=TensorBoardLogger(
             str(results_path), name=month_day, version=hour_min_second,
         ),
@@ -85,6 +89,7 @@ def main(accelerator = "gpu",             # "cpu" or "gpu" or "tpu"
         accumulate_grad_batches=accumulate_grad_batches,
         amp_backend=amp_backend,
         auto_lr_find=auto_lr_find,
+        auto_scale_batch_size=auto_scale_batch_size,  
         log_every_n_steps=log_every_n_steps, 
     )
 
@@ -101,7 +106,7 @@ def main(accelerator = "gpu",             # "cpu" or "gpu" or "tpu"
         print(
             f"""
     -----------------------------------------------------------------------------------
-    UV-Net Regression on atwcad pricing dataset
+    PNA Regression on /{dataset} dataset
     -----------------------------------------------------------------------------------
     Logs written to results/{experiment_name}/{month_day}/{hour_min_second}
 
@@ -125,22 +130,26 @@ def main(accelerator = "gpu",             # "cpu" or "gpu" or "tpu"
         val_loader = val_data.get_dataloader(
             batch_size=batch_size, shuffle=False, num_workers=num_workers, drop_last=False
         )
-        model = Regression(
-                        batch_size=batch_size,
-                        num_classes=1,
-                        vars_dim=vars_dim,
-                        crv_input_dim=edge_input_dim,
-                        srf_input_dim=face_input_dim,
-                        crv_emb_dim=crv_emb_dim,
-                        srf_emb_dim=srf_emb_dim,
-                        graph_emb_dim=graph_emb_dim,
-                        lossfn=lossfn,
-                        scheduler=scheduler,
-                        init_lr=init_lr,
-                        scaler_file=os.path.join(datasetDir, scaler_file) if scaler_file is not None else None
-                        )
-        if auto_lr_find:
-            trainer.tune(model)
+
+        # calculate deg histogram
+        deg = torch.zeros(5000, dtype=torch.long)
+        for data in train_data:
+            graph = data["graph"]
+            d = degree(graph.edge_index[0], graph.num_nodes, dtype=torch.long)
+            deg += torch.bincount(d, minlength=deg.numel())
+        
+        model = Regression(num_classes=num_classes,
+                           vars_dim=vars_dim,
+                           node_feat_dim=node_feat_dim,
+                           edge_feat_dim=edge_feat_dim,
+                           hidden_channels=hidden_channels,
+                           num_layers=num_layers,
+                           deg=deg,
+                           lossfn=lossfn,
+                           init_lr=init_lr,
+                           scheduler=scheduler,
+                           scaler_file=os.path.join(datasetDir, scaler_file) if scaler_file else None
+                           )
         trainer.fit(model, train_loader, val_loader)
 
     else:
@@ -148,14 +157,11 @@ def main(accelerator = "gpu",             # "cpu" or "gpu" or "tpu"
         assert (
             checkpointPath is not None
         ), "Expected the --checkpoint argument to be provided"
-        test_data = Dataset(root_dir=datasetDir, 
-                            center_and_scale=center_and_scale, 
-                            mode="test")
+        test_data = Dataset(root_dir=datasetDir, mode="test")
         test_loader = test_data.get_dataloader(
             batch_size=batch_size, shuffle=False, num_workers=num_workers, drop_last=False
         )
         model = Regression.load_from_checkpoint(checkpointPath)
-        # results = trainer.validate(model=model, dataloaders=[test_loader])
         results = trainer.predict(model=model, dataloaders=[test_loader])
         preds = torch.cat([x["preds"] for x in results])
         labels = torch.cat([x["labels"] for x in results])
@@ -172,6 +178,10 @@ def main(accelerator = "gpu",             # "cpu" or "gpu" or "tpu"
             codes.append(code)
 
         df = pd.DataFrame(
-            {"code": codes, "predict": preds.squeeze().numpy(), "actual": labels.squeeze().numpy()}
+            {"code": codes, "predicted_volume": preds.numpy(), "actual_volume": labels.numpy()}
         )
         df.to_csv(results_path.joinpath(f"test_results_{month_day}_{hour_min_second}_{acc:.4f}.csv"), index=False)
+
+
+if __name__ == "__main__":
+    main()

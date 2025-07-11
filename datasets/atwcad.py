@@ -11,7 +11,6 @@
 '''
 
 # here put the import lib
-
 import pathlib
 import os.path as osp
 import torch
@@ -19,18 +18,18 @@ from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 import numpy as np
 import joblib
-from datasets.base import BaseDataset
+from torch.utils.data import Dataset, DataLoader
+from torch_geometric.data import Batch
 
 
 
-class ATWCADDataset(BaseDataset):
+class ATWCADDataset(Dataset):
 
     def __init__(
         self,
         root_dir,
         mode="train",
         center_and_scale=False,
-        random_rotate=False,
     ):
         """
         Load the ATWCAD dataset
@@ -53,13 +52,11 @@ class ATWCADDataset(BaseDataset):
             root_dir (str): Root path to the dataset
             mode (str, optional): Split (train, val, or test) to load. Defaults to "train".
             center_and_scale (bool, optional): Whether to center and scale the solid. Defaults to True.
-            random_rotate (bool, optional): Whether to apply random rotations to the solid in 90 degree increments. Defaults to False.
         """
         assert mode in ("train", "val", "test")
         self.mode = mode
         self.root_dir = root_dir
         self.data_txt = osp.join(self.root_dir, self.mode + ".txt")
-        self.random_rotate = random_rotate
 
         self.file_paths = []
         self.vars = []
@@ -85,8 +82,8 @@ class ATWCADDataset(BaseDataset):
                 filename, annostr = line.rsplit('  ', 1)
                 values = [float(x) for x in annostr.split(' ')]
                 # assert len(values) == 11, "{} has wrong number of values".format(filename)
-                filename += '.bin'
-                self.file_paths.append(path / 'bin' / filename)
+                filename += '.pt'
+                self.file_paths.append(path / 'pt' / filename)
                 self.vars.append(values[:-1])  
                 self.labels.append(values[-1])
 
@@ -96,18 +93,18 @@ class ATWCADDataset(BaseDataset):
             sample = self.load_one_graph(idx)
             if sample is None:
                 continue
-            if sample["graph"].edata["x"].size(0) == 0:
+            if sample["graph"].edge_attr.size(0) == 0:
                 # Catch the case of graphs with no edges
                 continue
             self.data.append(sample)
-        self.convert_to_float32()
 
     def load_one_graph(self, index):
         filename = self.file_paths[index]
         if not filename.exists():
             return None
-        # Load the graph using base class method
-        sample = super().load_one_graph(filename)
+        sample = {}
+        sample["graph"] = torch.load(filename)
+        sample["filename"] = filename.stem
         # Additionally get the label from the filename and store it in the sample dict
         sample["vars"] = torch.tensor([self.vars[index]], dtype=torch.float32)
         sample["label"] = torch.tensor(self.labels[index], dtype=torch.float32)
@@ -123,8 +120,8 @@ class ATWCADDataset(BaseDataset):
             labelScaler = StandardScaler().fit(np.array(self.labels).reshape(-1, 1))
             joblib.dump((faceScaler, edgeScaler, varScaler, labelScaler), scalerPath)
         for i in range(len(self.data)):
-            faceFeat = self.data[i]["graph"].ndata["x"].numpy().reshape(-1, 18)
-            edgeFeat = self.data[i]["graph"].edata["x"].numpy().reshape(-1, 18)
+            faceFeat = self.data[i]["graph"].x.numpy().reshape(-1, 18)
+            edgeFeat = self.data[i]["graph"].edge_attr.numpy().reshape(-1, 18)
             faceFeatNoScale = faceFeat[:, filter_columns_face]
             edgeFeatNoScale = edgeFeat[:, filter_columns_edge]
             faceFeatScale = np.delete(faceFeat, filter_columns_face, axis=1)
@@ -133,8 +130,8 @@ class ATWCADDataset(BaseDataset):
             edgeFeatScale = edgeScaler.transform(edgeFeatScale)
             faceFeat = np.insert(faceFeatScale, filter_columns_face, faceFeatNoScale, axis=1)
             edgeFeat = np.insert(edgeFeatScale, filter_columns_edge, edgeFeatNoScale, axis=1)
-            self.data[i]["graph"].ndata["x"] = torch.from_numpy(faceFeat.reshape(-1, 6, 3))
-            self.data[i]["graph"].edata["x"] = torch.from_numpy(edgeFeat.reshape(-1, 6, 3))
+            self.data[i]["graph"].x = torch.from_numpy(faceFeat)
+            self.data[i]["graph"].edge_attr = torch.from_numpy(edgeFeat)
 
             vars = self.data[i]["vars"].numpy().reshape(-1, 8)
             varsNoScale = vars[:, filter_columns_var]
@@ -155,8 +152,8 @@ class ATWCADDataset(BaseDataset):
         faceAttrs = []
         edgeAttrs = []
         for graph in self.data:
-            faceAttrs.append(graph["graph"].ndata["x"].numpy().reshape(-1, 18))
-            edgeAttrs.append(graph["graph"].edata["x"].numpy().reshape(-1, 18))
+            faceAttrs.append(graph["graph"].x.numpy().reshape(-1, 18))
+            edgeAttrs.append(graph["graph"].edge_attr.numpy().reshape(-1, 18))
         faceAttrs = np.concatenate(faceAttrs, axis=0)
         edgeAttrs = np.concatenate(edgeAttrs, axis=0)
         # filter out constant attributes
@@ -175,10 +172,29 @@ class ATWCADDataset(BaseDataset):
         varsScaler = StandardScaler().fit(vars)
         return varsScaler
 
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        sample = self.data[idx]
+        return sample
+
     def _collate(self, batch):
-        collated = super()._collate(batch)
+        batched_graph = Batch.from_data_list([x["graph"] for x in batch])
+        batch_filename = [x["filename"] for x in batch]
+        collated = {}
+        collated["graph"] = batched_graph
+        collated["filename"] = batch_filename
         collated["label"] =  torch.Tensor([x["label"] for x in batch])
         collated["vars"] =  torch.cat([x["vars"] for x in batch], dim=0)
         return collated
-
-
+    
+    def get_dataloader(self, batch_size=128, shuffle=True, num_workers=0, drop_last=True):
+        return DataLoader(
+            self,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            collate_fn=self._collate,
+            num_workers=num_workers,  # Can be set to non-zero on Linux
+            drop_last=drop_last,
+        )
