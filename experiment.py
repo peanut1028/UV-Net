@@ -6,11 +6,13 @@ from loguru import logger
 TEST_TIME = 3
 
 TEST_LIST = [
-            #  0, 
-            #  1, 
-            #  2, 
-             3,
+             0, 
+             1, 
+             2, 
+            #  3,
 ]
+
+logger.add("run.log")
 
 """毛体积估计-普通钣金"""
 def test_material():
@@ -22,22 +24,23 @@ def test_material():
                 r"E:\Project\AutoPricing\datasets\atwmaterial\test.txt")
     shutil.copy2(r"E:\Project\AutoPricing\datasets\atwmaterial\v5\val.txt", 
                 r"E:\Project\AutoPricing\datasets\atwmaterial\val.txt")
-    logger.info("毛体积估计-普通钣金 scale noscheduler")
+    logger.info("毛体积估计-普通钣金PNA noscale noscheduler")
     for i in range(TEST_TIME):
         main(max_epochs=1000,
-            center_and_scale=True,
+            center_and_scale=False,
             node_feat_dim=18,
             edge_feat_dim=18,
             vars_dim=7,
             batch_size=256,
             hidden_channels=64,
+            num_layers=3,
             datasetDir=r"E:\Project\AutoPricing\datasets",
             mode="train",
             dataset="atwmaterial",
             lossfn='L1',
             init_lr=0.01,
             scheduler=None,
-            scaler_file="scaler.joblib")  
+            scaler_file=None)  
         
 
 """加工价格估计-普通钣金"""
@@ -66,6 +69,23 @@ def test_price():
     #      center_and_scale=False,
     #      checkpointPath=r"E:\LGJ\program\UV-Net\results\regression\0623\141959\epoch=419-val_loss=2.0745-val_acc=0.8666.ckpt",)
     
+    logger.info("加工价格估计-普通钣金PNA noscale noscheduler")
+    for i in range(TEST_TIME):
+        main(max_epochs=1000,
+            center_and_scale=False,
+            node_feat_dim=18,
+            edge_feat_dim=18,
+            vars_dim=8,
+            batch_size=256,
+            hidden_channels=64,
+            num_layers=3,
+            datasetDir=r"E:\Project\AutoPricing\datasets",
+            mode="train",
+            dataset="atwcad",
+            lossfn='L1',
+            init_lr=0.01,
+            scheduler=None,
+            scaler_file=None) 
 
 """毛体积估计-焊接钣金"""
 def test_material_weld():
@@ -77,23 +97,23 @@ def test_material_weld():
                 r"E:\Project\AutoPricing\datasets\atwmaterial\test.txt")
     shutil.copy2(r"E:\Project\AutoPricing\datasets\atwmaterial\v5_1\val.txt", 
                 r"E:\Project\AutoPricing\datasets\atwmaterial\val.txt")
-    logger.info("毛体积估计-焊接钣金 scale noscheduler channel*2")
+    logger.info("毛体积估计-焊接钣金PNA noscale noscheduler")
     for i in range(TEST_TIME):
-        main(max_epochs=800,
-            center_and_scale=True,
-            edge_input_dim=3,
-            face_input_dim=3,
+        main(max_epochs=1000,
+            center_and_scale=False,
+            node_feat_dim=18,
+            edge_feat_dim=18,
             vars_dim=7,
-            batch_size=64,
-            crv_emb_dim=128,
-            srf_emb_dim=128,
-            graph_emb_dim=256,
+            batch_size=256,
+            hidden_channels=64,
+            num_layers=3,
             datasetDir=r"E:\Project\AutoPricing\datasets",
             mode="train",
             dataset="atwmaterial",
             lossfn='L1',
+            init_lr=0.01,
             scheduler=None,
-            scaler_file="scaler.joblib") 
+            scaler_file=None)   
 
     
 """加工价格估计-焊接钣金"""
@@ -122,61 +142,6 @@ def test_price_weld():
     #      dataset="atwcad",
     #      center_and_scale=False,
     #      checkpointPath=r"E:\LGJ\program\UV-Net\results\regression\0624\013642\epoch=479-val_loss=7.8872-val_acc=0.8216.ckpt",)
-    
-    # logger.info("加工价格估计-焊接钣金PNA noscale noscheduler")
-    # for i in range(TEST_TIME):
-    #     main(max_epochs=1000,
-    #         center_and_scale=False,
-    #         node_feat_dim=18,
-    #         edge_feat_dim=18,
-    #         vars_dim=8,
-    #         batch_size=256,
-    #         hidden_channels=64,
-    #         num_layers=3,
-    #         datasetDir=r"E:\Project\AutoPricing\datasets",
-    #         mode="train",
-    #         dataset="atwcad",
-    #         lossfn='L1',
-    #         init_lr=0.01,
-    #         scheduler=None,
-    #         scaler_file=None)  
-    
-
-    logger.info("加工价格估计-焊接钣金PNA noscale noscheduler layernum=5")
-    for i in range(TEST_TIME):
-        main(max_epochs=1000,
-            center_and_scale=False,
-            node_feat_dim=18,
-            edge_feat_dim=18,
-            vars_dim=8,
-            batch_size=256,
-            hidden_channels=64,
-            num_layers=5,
-            datasetDir=r"E:\Project\AutoPricing\datasets",
-            mode="train",
-            dataset="atwcad",
-            lossfn='L1',
-            init_lr=0.01,
-            scheduler=None,
-            scaler_file=None)    
-
-    logger.info("加工价格估计-焊接钣金PNA noscale scheduler='multistep'")
-    for i in range(TEST_TIME):
-        main(max_epochs=1000,
-            center_and_scale=False,
-            node_feat_dim=18,
-            edge_feat_dim=18,
-            vars_dim=8,
-            batch_size=256,
-            hidden_channels=64,
-            num_layers=3,
-            datasetDir=r"E:\Project\AutoPricing\datasets",
-            mode="train",
-            dataset="atwcad",
-            lossfn='L1',
-            init_lr=0.01,
-            scheduler='multistep',
-            scaler_file=None)   
 
     logger.info("加工价格估计-焊接钣金PNA noscale scheduler='cosine'")
     for i in range(TEST_TIME):

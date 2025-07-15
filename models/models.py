@@ -9,6 +9,23 @@ from ops.loss import AdaptiveRelativeLoss
 
 
 
+class Encoder(nn.Module):
+    def __init__(self, 
+                 in_channels, 
+                 out_channels, 
+                 dropout=0.2):
+        super().__init__()
+        self.conv1 = Sequential(
+            Linear(in_channels, out_channels),
+            ReLU(),
+            BatchNorm1d(out_channels),
+        )
+
+    def forward(self, x):
+        x = self.conv1(x)
+        return x
+
+
 class PNA(nn.Module):
     def __init__(self, 
                  node_in_channels, 
@@ -24,10 +41,13 @@ class PNA(nn.Module):
         super().__init__()
         # Input projection for node features
         self.node_encoder = Linear(node_in_channels, hidden_channels)
+
         # Input projection for edge features
         self.edge_encoder = Linear(edge_in_channels, hidden_channels)
+
         # Input projection for variables
         self.vars_encoder = Linear(var_in_channels, hidden_channels)
+
         # Build PNA layers
         self.convs = torch.nn.ModuleList()
         self.batch_norms = torch.nn.ModuleList()
@@ -153,11 +173,15 @@ class Regression(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         inputs = batch["graph"].to(self.device)
-        inputs.ndata["x"] = inputs.ndata["x"].permute(0, 2, 1)
-        inputs.edata["x"] = inputs.edata["x"].permute(0, 2, 1)
+        node_feat = inputs.x.reshape(-1, 18).float()
+        edge_feat = inputs.edge_attr.reshape(-1, 18).float()
         labels = batch["label"].to(self.device)
         vars = batch["vars"].to(self.device)
-        logits = self.model(inputs, vars)
+        logits = self.model(node_feat,
+                            inputs.edge_index, 
+                            edge_feat,
+                            vars,
+                            batch)
         logits = torch.squeeze(logits)
         preds = logits
         if self.scaler:
