@@ -84,7 +84,7 @@ class PNA(nn.Module):
             x = F.dropout(x, p=self.dropout, training=self.training)
 
         # Global pooling (mean) for graph-level output
-        x = global_mean_pool(x, batch['graph'].batch)
+        x = global_mean_pool(x, batch['graph'].batch if isinstance(batch, dict) else batch)
 
         # Final regression MLP
         out = self.mlp(torch.cat([x, vars], dim=1))
@@ -221,7 +221,7 @@ class Regression(pl.LightningModule):
                          "strict": False, 
                          "monitor": monitor}
         elif self.scheduler == 'cosine':
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-5)
         elif self.scheduler == 'linear':
             scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, 1, 0.001)
         elif self.scheduler == 'multistep':

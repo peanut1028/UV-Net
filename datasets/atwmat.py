@@ -84,7 +84,7 @@ class ATWMATDataset(Dataset):
                 # assert len(values) == 11, "{} has wrong number of values".format(filename)
                 filename += '.pt'
                 self.file_paths.append(path / 'pt' / filename)
-                self.vars.append(values[:-1])  
+                self.vars.append(values[:1]+values[2:-1])  
                 self.labels.append(values[-1])
 
     def load_graphs(self):

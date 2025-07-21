@@ -26,11 +26,11 @@ def test_material():
                 r"E:\Project\AutoPricing\datasets\atwmaterial\val.txt")
     logger.info("毛体积估计-普通钣金PNA noscale noscheduler")
     for i in range(TEST_TIME):
-        main(max_epochs=1000,
+        main(max_epochs=2500,
             center_and_scale=False,
             node_feat_dim=18,
             edge_feat_dim=18,
-            vars_dim=7,
+            vars_dim=6,
             batch_size=256,
             hidden_channels=64,
             num_layers=3,
@@ -39,7 +39,7 @@ def test_material():
             dataset="atwmaterial",
             lossfn='L1',
             init_lr=0.01,
-            scheduler=None,
+            scheduler='cosine',
             scaler_file=None)  
         
 
@@ -71,7 +71,7 @@ def test_price():
     
     logger.info("加工价格估计-普通钣金PNA noscale noscheduler")
     for i in range(TEST_TIME):
-        main(max_epochs=1000,
+        main(max_epochs=2500,
             center_and_scale=False,
             node_feat_dim=18,
             edge_feat_dim=18,
@@ -84,7 +84,7 @@ def test_price():
             dataset="atwcad",
             lossfn='L1',
             init_lr=0.01,
-            scheduler=None,
+            scheduler='cosine',
             scaler_file=None) 
 
 """毛体积估计-焊接钣金"""
@@ -99,11 +99,11 @@ def test_material_weld():
                 r"E:\Project\AutoPricing\datasets\atwmaterial\val.txt")
     logger.info("毛体积估计-焊接钣金PNA noscale noscheduler")
     for i in range(TEST_TIME):
-        main(max_epochs=1000,
+        main(max_epochs=2500,
             center_and_scale=False,
             node_feat_dim=18,
             edge_feat_dim=18,
-            vars_dim=7,
+            vars_dim=6,
             batch_size=256,
             hidden_channels=64,
             num_layers=3,
@@ -111,7 +111,7 @@ def test_material_weld():
             mode="train",
             dataset="atwmaterial",
             lossfn='L1',
-            init_lr=0.01,
+            init_lr=0.005,
             scheduler=None,
             scaler_file=None)   
 
@@ -145,7 +145,7 @@ def test_price_weld():
 
     logger.info("加工价格估计-焊接钣金PNA noscale scheduler='cosine'")
     for i in range(TEST_TIME):
-        main(max_epochs=1000,
+        main(max_epochs=2500,
             center_and_scale=False,
             node_feat_dim=18,
             edge_feat_dim=18,

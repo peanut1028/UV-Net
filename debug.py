@@ -157,45 +157,28 @@ get the three-view drawing from a step file(not accurate)
 #     f.writelines(new_lines)
 
 
-# import os
+# 检查train.txt和val.txt中是否有重复的code
+train_txt = r"C:\Users\Administrator\Desktop\train.txt"
+test_txt = r"C:\Users\Administrator\Desktop\test.txt"
 
-# raw_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v4_1\total.txt"
-# dst_path = r"E:\Project\AutoPricing\datasets\atwcad\v4_1"
-# ref_txt_path = r"E:\Project\AutoPricing\datasets\atwcad\v3_1\val.txt"
+with open(train_txt, "r") as f:
+    trainList = f.readlines()
 
-# with open(raw_txt_path, "r") as f:
-#     lines = f.readlines()
+with open(test_txt, "r") as f:
+    testList = f.readlines()
 
-# with open(ref_txt_path, "r") as f:
-#     ref_lines = f.readlines()
+testSet = set([x.strip().split("  ")[0] for x in testList])
 
-# ref = []
-# for l in ref_lines:
-#     code, _ = l.strip().split("  ")
-#     ref.append(code)
+removeList = []
+for i, l in enumerate(trainList):
+    code = l.strip().split("  ")[0]
+    if code in testSet:
+        removeList.append(i)
 
-# train_lines = []
-# test_lines = []
-# # 需严格匹配，以跟之前的基准对齐
-# for c in ref:
-#     for l in lines:
-#         if not l.strip():
-#             continue
-#         if c in l:
-#             test_lines.append(l)
-#             break
-    
-# for l in lines:
-#     if not l.strip():
-#         continue
-#     if l not in test_lines:
-#         train_lines.append(l)
+trainList = [trainList[i] for i in range(len(trainList)) if i not in removeList]
 
-# with open(os.path.join(dst_path, "train.txt"), "w") as f:
-#     f.writelines(train_lines)
-
-# with open(os.path.join(dst_path, "test.txt"), "w") as f:
-#     f.writelines(test_lines)
+with open(train_txt, "w") as f:
+    f.writelines(trainList)
 
 
 """
@@ -222,35 +205,35 @@ bin文件查看，找到face_type和edge_type集合
 """
 pt Data查看，找出最大度数
 """
-import torch
-from torch_geometric.data import Data, DataLoader
-from torch_geometric.utils import degree
-import os
+# import torch
+# from torch_geometric.data import Data, DataLoader
+# from torch_geometric.utils import degree
+# import os
 
-# 假设图文件存储在一个目录中，每个文件是一个Data对象
-directory = r'E:\Project\AutoPricing\datasets\atwcad\pt'
+# # 假设图文件存储在一个目录中，每个文件是一个Data对象
+# directory = r'E:\Project\AutoPricing\datasets\atwcad\pt'
 
-# 初始化最大度数为0
-max_degree = 0
+# # 初始化最大度数为0
+# max_degree = 0
 
-# 遍历目录中的每个文件
-for filename in os.listdir(directory):
-    if filename.endswith('.pt'):  # 假设文件是以.pt为扩展名的PyTorch保存文件
-        filepath = os.path.join(directory, filename)
+# # 遍历目录中的每个文件
+# for filename in os.listdir(directory):
+#     if filename.endswith('.pt'):  # 假设文件是以.pt为扩展名的PyTorch保存文件
+#         filepath = os.path.join(directory, filename)
         
-        # 加载图数据
-        data = torch.load(filepath)
+#         # 加载图数据
+#         data = torch.load(filepath)
         
-        # 确保data是Data对象
-        if isinstance(data, Data):
-            # 计算每个节点的度数
-            node_degrees = degree(data.edge_index[1], num_nodes=data.num_nodes)
+#         # 确保data是Data对象
+#         if isinstance(data, Data):
+#             # 计算每个节点的度数
+#             node_degrees = degree(data.edge_index[1], num_nodes=data.num_nodes)
             
-            # 找到当前图的最大度数
-            current_max_degree = node_degrees.max().item()
+#             # 找到当前图的最大度数
+#             current_max_degree = node_degrees.max().item()
             
-            # 更新全局最大度数
-            if current_max_degree > max_degree:
-                max_degree = current_max_degree
+#             # 更新全局最大度数
+#             if current_max_degree > max_degree:
+#                 max_degree = current_max_degree
 
-print(f"最大度数为: {max_degree}")
+# print(f"最大度数为: {max_degree}")

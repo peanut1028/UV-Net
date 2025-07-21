@@ -13,31 +13,19 @@
 # here put the import lib
 import os
 import torch
-from dgl.data.utils import load_graphs
-from uvnet.models import Regression
-from datasets import util
+from models.models import Regression
 
 
-MODEL_PATH = r"E:\LGJ\program\UV-Net\results\regression\0211\182928\epoch=439-val_loss=3.73-val_acc=0.82.ckpt"
-TEST_FILE = r"E:\Project\AutoPricing\datasets\atwcad\bin\B018F-43-01-015A.bin"
-TEST_VAR = [577, 799.57, 15767.1, 1969, 1, 4172, 0.0]
+# MODEL_PATH = r"E:\Project\AutoPricing\sheet-metal-pricing\models\machining_pricing_model.ckpt"
+MODEL_PATH = r"E:\Project\AutoPricing\sheet-metal-pricing\models\volume_model.ckpt"
+TEST_FILE = r"E:\Project\AutoPricing\datasets\atwcad\pt\A059B-22-01-02-064A.pt"
+TEST_VAR = [2.0949535, 5.0, 0, 2, 122, 13.08, 1.35]  
 
-def center_and_scale(graph):
-    graph.ndata["x"], center, scale = util.center_and_scale_uvgrid(
-        graph.ndata["x"], return_center_scale=True
-    )
-    graph.edata["x"][..., :3] -= center
-    graph.edata["x"][..., :3] *= scale
-    return graph
 
 def load_test_data(filename, var, convertCenter=True):
     if not os.path.exists(filename):
         return None
-    graph = load_graphs(str(filename))[0][0]
-    if convertCenter:
-        graph = center_and_scale(graph)
-    graph.ndata["x"] = graph.ndata["x"].type(torch.FloatTensor)
-    graph.edata["x"] = graph.edata["x"].type(torch.FloatTensor)
+    graph = torch.load(filename)
     sample = {"graph": graph, 
               "vars": torch.tensor(var, dtype=torch.float32)}
     return sample
@@ -46,13 +34,12 @@ def load_test_data(filename, var, convertCenter=True):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 test_sample = load_test_data(TEST_FILE, TEST_VAR)
 graph = test_sample["graph"].to(device)
-graph.ndata["x"] = graph.ndata["x"].permute(0, 3, 1, 2)
-graph.edata["x"] = graph.edata["x"].permute(0, 2, 1)
+node_feat = graph.x.reshape(-1, 18).float()
+edge_feat = graph.edge_attr.reshape(-1, 18).float()
 vars = test_sample["vars"].unsqueeze(0).to(device)
-
-model = Regression()
-model = model.load_from_checkpoint(MODEL_PATH).to(device)
+batch = torch.zeros(graph.x.size(0), dtype=torch.long).to(device)
+model = Regression.load_from_checkpoint(MODEL_PATH).to(device)
 model.eval()
 with torch.no_grad():
-    result = model.model(graph, vars)
+    result = model.model(node_feat, graph.edge_index, edge_feat, vars, batch)
 print(f"The predicted price of file {TEST_FILE} is {result.item()}")
